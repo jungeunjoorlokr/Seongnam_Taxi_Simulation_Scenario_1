@@ -1,0 +1,70 @@
+# -----------------------------
+# Python 기본
+# -----------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# -----------------------------
+# 가상환경 / 환경폴더
+# -----------------------------
+.venv/
+venv/
+ENV/
+env/
+.Python
+
+# -----------------------------
+# IDE / 편집기
+# -----------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# -----------------------------
+# OS별 불필요 파일
+# -----------------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# 로그 / 캐시
+# -----------------------------
+*.log
+*.out
+*.tmp
+*.cache/
+.ipynb_checkpoints/
+
+# -----------------------------
+# 환경설정 / 보안
+# -----------------------------
+.env
+.env.local
+.env.*.local
+secrets.json
+
+# -----------------------------
+# 시뮬레이션 결과물
+# -----------------------------
+simul_result/
+*.csv
+*.json
+*.parquet
+*.xlsx
+
+# -----------------------------
+# 대용량 파일 방지 (GitHub 100MB 제한)
+# Git LFS 권장 파일 유형
+# -----------------------------
+*.zip filter=lfs diff=lfs merge=lfs -text
+*.tar filter=lfs diff=lfs merge=lfs -text
+*.gz filter=lfs diff=lfs merge=lfs -text
+*.pkl filter=lfs diff=lfs merge=lfs -text

@@ -1,0 +1,42 @@
+다음은 사용자가 입력한 시뮬레이션 설정 조정 명령어입니다.  
+명령어를 분석하여 아래 형식의 JSON 객체로 응답하세요.  
+**JSON 외 설명은 포함하지 마세요.**
+불필요한 설명 없이 아래와 같은 JSON만 단독으로 출력해야 합니다:
+⚠️ 주의: {{command}}가 input_variables=["command"]에 정확히 대응되어야 합니다.
+형식:
+{
+  "type": "SET_VALUE",
+  "target_variable": "num_taxis",
+  "value": <택시 수 (정수)>
+}
+
+※ target_variable은 반드시 "num_taxis"로 고정합니다.
+
+예시:
+
+입력: 택시 수를 800대로 바꿔줘  
+출력:
+{
+  "type": "SET_VALUE",
+  "target_variable": "num_taxis",
+  "value": 800
+}
+
+입력: 차량을 1500대로 줄여줘  
+출력:
+{
+  "type": "SET_VALUE",
+  "target_variable": "num_taxis",
+  "value": 1500
+}
+
+입력: 1000대로 변경  
+출력:
+{
+  "type": "SET_VALUE",
+  "target_variable": "num_taxis",
+  "value": 1000
+}
+
+명령어:
+{command}
