@@ -46,11 +46,15 @@ def load_and_filter_data(num_taxis=None):
     print("데이터 로딩 중...")
     
     # 데이터 로드
-    passengers = pd.read_csv('./data/agents/passenger/passenger_data.csv')
-    vehicles = pd.read_csv('./data/agents/vehicle/vehicle_data.csv')
+    base_path = os.path.dirname(os.path.abspath(__file__))  # main.py 위치
+    passenger_path = os.path.join(base_path, "data", "agents", "passenger", "passenger_data.csv")
+    vehicle_path   = os.path.join(base_path, "data", "agents", "vehicle", "vehicle_data.csv")
+
+    passengers = pd.read_csv(passenger_path)
+    vehicles   = pd.read_csv(vehicle_path)
     
     # 전처리
-    passengers, vehicles = get_preprocessed_seongnam_data(passengers, vehicles)
+    #passengers, vehicles = get_preprocessed_seongnam_data(passengers, vehicles)
     
     print(f"원본 데이터: 승객 {len(passengers)}명, 차량 {len(vehicles)}대")
     
@@ -72,9 +76,9 @@ def setup_simulation_config():
     # 기본 설정
     simul_configs['target_region'] = '성남 대한민국'
     simul_configs['relocation_region'] = 'seongnam'
-    simul_configs['additional_path'] = 'scenario_1'
+    simul_configs['additional_path'] = 'scenario_1_seongnam_23_02'
     simul_configs['dispatch_mode'] = 'in_order'
-    simul_configs['time_range'] = [0, 10]
+    simul_configs['time_range'] = [1380, 1560]
     simul_configs['matrix_mode'] = 'haversine_distance' 
     simul_configs['add_board_time'] = 0.2
     simul_configs['add_disembark_time'] = 0.2
@@ -224,7 +228,7 @@ def generate_html_js_files(simulation_name):
            
            try {{
                // 절대 경로로 시도
-               const csvUrl = 'file:///Users/jung-eunjoo/Desktop/scenario_seongnam_general_dispatch/visualization/dashboard/assets/data/{simulation_name}_data/stats.csv';
+               const csvUrl = `./visualization/dashboard/assets/data/${simulation_name}_data/stats.csv`;
                
                const res = await fetch(csvUrl);
                const text = await res.text();
@@ -297,7 +301,7 @@ def update_progress(progress, message, estimated_time=0):
 # 메인 실행 함수
 ########################################################################################
 # 전역 변수로 택시 수 설정
-num_taxis = 500  # ← 자연어 명령으로 변경됨
+num_taxis = None  # ← 자연어 명령으로 변경됨
 
 def main():
     """메인 실행 함수"""

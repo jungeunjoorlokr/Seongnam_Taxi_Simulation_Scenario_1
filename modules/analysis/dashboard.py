@@ -3,7 +3,7 @@ dashboard_config = {
     'base_path':'./simul_result/scenario_base/',
     'save_figure_path': "./visualization/dashboard/assets/figure/",
     'save_file_path': "./visualization/dashboard/assets/data/",
-    'region_boundary_file_path': '/Users/jung-eunjoo/Desktop/scenario_seongnam_general_dispatch/data/etc/seongnam_boundary.geojson',
+    'region_boundary_file_path': None,
     # time range
     'time_range' : [0, 1440],
     # target region
@@ -11,6 +11,11 @@ dashboard_config = {
     # mapboxkey
     'mapboxKey' : "pk.eyJ1Ijoic3BlYXI1MzA2IiwiYSI6ImNremN5Z2FrOTI0ZGgycm45Mzh3dDV6OWQifQ.kXGWHPRjnVAEHgVgLzXn2g",
 }
+
+# ---- 실행 환경별로 경로 동적으로 지정 ----
+base_path = os.path.dirname(os.path.abspath(__file__))
+boundary_path = os.path.join(base_path, "data", "etc", "seongnam_boundary.geojson")
+dashboard_config['region_boundary_file_path'] = boundary_path
 
 import os 
 import osmnx as ox
