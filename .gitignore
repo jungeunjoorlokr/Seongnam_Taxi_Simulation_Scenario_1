@@ -58,7 +58,6 @@ secrets.json
 # 시뮬레이션 결과물
 # -----------------------------
 simul_result/
-*.csv
 *.json
 *.parquet
 *.xlsx
