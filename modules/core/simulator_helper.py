@@ -153,8 +153,8 @@ base_configs = {'target_region': '성남 대한민국',
                   'additional_path':None, # simul_result에 이 자리위에 생김
                   'time_range':[0, 1440],
                   'fail_time': 10,
-                #   'add_board_time': 10, # 일반 택시 시뮬이라 필요 없음
-                #   'add_disembark_time': 10,
+                  'add_board_time': 0.2, # 일반 택시 시뮬이라 필요 없음-> 한 10초정도로
+                  'add_disembark_time': 0.2,
                   'matrix_mode': 'street_distance', # ['street_distance', 'ETA', 'haversine_distance']
                   'dispatch_mode': 'in_order', # ['optimization', 'in_order']
                   'eta_model': None,
