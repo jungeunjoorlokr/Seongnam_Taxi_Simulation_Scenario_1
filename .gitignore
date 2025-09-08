@@ -66,3 +66,26 @@ simul_result/
 # Node.js
 # -----------------------------
 node_modules/
+
+
+raw_data/
+
+# 대용량 원시 데이터 파일 확장자
+*.csv
+*.tsv
+*.json
+*.parquet
+*.xlsx
+*.zip
+*.tar
+*.gz
+*.pkl
+
+# generated figures
+visualization/dashboard/assets/figure/
+
+# Generated dashboard figures
+visualization/dashboard/assets/figure/
+
+# Large boundary data (keep local only)
+data/etc/HangJeongDong_ver20230701.geojson
