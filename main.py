@@ -14,6 +14,7 @@ import warnings
 import time
 from datetime import datetime
 import json
+from glob import glob
 
 
 # 경고 메시지 숨기기
@@ -54,9 +55,11 @@ def load_and_filter_data(num_taxis=None):
     vehicles   = pd.read_csv(vehicle_path)
     
     # 전처리
-    #passengers, vehicles = get_preprocessed_seongnam_data(passengers, vehicles)
+    passengers, vehicles = get_preprocessed_seongnam_data(passengers, vehicles)
     
     print(f"원본 데이터: 승객 {len(passengers)}명, 차량 {len(vehicles)}대")
+    print(passengers[passengers['ride_time'].between(1380,1560)])
+    print("해당 시간대 승객 수:", len(passengers[passengers['ride_time'].between(1380,1560)]))
     
     # 차량 수 제한 (자연어 명령으로 전달된 경우)
     if num_taxis is not None and num_taxis < len(vehicles):
@@ -76,7 +79,7 @@ def setup_simulation_config():
     # 기본 설정
     simul_configs['target_region'] = '성남 대한민국'
     simul_configs['relocation_region'] = 'seongnam'
-    simul_configs['additional_path'] = 'scenario_1_seongnam_23_02'
+    simul_configs['additional_path'] = 'scenario_base'
     simul_configs['dispatch_mode'] = 'in_order'
     simul_configs['time_range'] = [1380, 1560]
     simul_configs['matrix_mode'] = 'haversine_distance' 
@@ -160,6 +163,7 @@ def generate_dashboard(simul_configs):
         
         # 개별 대시보드 설정
         config_individual = dashboard_config.copy()
+        config_individual['time_range'] = [1380, 1560]
         config_individual['base_path'] = './simul_result/scenario_base/'
         config_individual['save_figure_path'] = f"./visualization/dashboard/assets/figure/{simulation_name}_figures/"
         config_individual['save_file_path'] = f"./visualization/dashboard/assets/data/{simulation_name}_data/"
@@ -228,7 +232,7 @@ def generate_html_js_files(simulation_name):
            
            try {{
                // 절대 경로로 시도
-               const csvUrl = `./visualization/dashboard/assets/data/${simulation_name}_data/stats.csv`;
+               const csvUrl = 'file:///Users/jung-eunjoo/Desktop/scenario_seongnam_general_dispatch/visualization/dashboard/assets/data/{simulation_name}_data/stats.csv';
                
                const res = await fetch(csvUrl);
                const text = await res.text();
@@ -301,7 +305,7 @@ def update_progress(progress, message, estimated_time=0):
 # 메인 실행 함수
 ########################################################################################
 # 전역 변수로 택시 수 설정
-num_taxis = None  # ← 자연어 명령으로 변경됨
+num_taxis = 950  # ← 자연어 명령으로 변경됨
 
 def main():
     """메인 실행 함수"""
@@ -320,6 +324,19 @@ def main():
         update_progress(10, "데이터 로딩 중... (예상 1분)", 240)
         passengers, vehicles = load_and_filter_data(num_taxis)
         
+        # 여기다가 넣으세요
+        print(
+            "work_start~end 요약(분):",
+            vehicles['work_start'].min(), "→", vehicles['work_end'].max()
+        )
+        print(vehicles.assign(
+            work_start_h=vehicles['work_start']/60,
+            work_end_h=vehicles['work_end']/60
+        )[['work_start_h','work_end_h']].describe())
+        print(
+            vehicles.groupby((vehicles['work_end']//60)).size().head(48)
+        )  # 종료 ‘시’별 분포
+
         # 2. 시뮬레이션 설정 (20%)
         update_progress(20, "시뮬레이션 설정 중...", 200)
         simul_configs = setup_simulation_config()

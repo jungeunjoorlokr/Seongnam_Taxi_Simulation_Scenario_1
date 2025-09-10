@@ -20,6 +20,12 @@ class Simulator:
         path_to_save_data = generate_path_to_save(self.configs['path'], self.configs['additional_path'])
         self.configs['save_path'] = path_to_save_data
 
+        # 🔎 누가 선택됐는지/어디에 저장할지 바로 확인
+        print(f"[WHO] extract_main = {self.extract_main.__module__}.{self.extract_main.__name__}")
+        print(f"[WHO] dispatch_main = {self.dispatch_main.__module__}.{self.dispatch_main.__name__}")
+        print(f"[PATH] save_path = {self.configs['save_path']}")
+        print(f"[CFG] problem = {self.configs.get('problem')}, dispatch_mode = {self.configs.get('dispatch_mode')}")
+
         # object data (raw_data | passengers, vehicles)
         self.raw_data = raw_data
         self.passengers = passengers
@@ -53,6 +59,7 @@ class Simulator:
     ### simulation run function
     def run(self):
         start_time, end_time = self.configs['time_range'][0], self.configs['time_range'][1]
+        print(f"[RUN] time_range = {start_time}~{end_time}, passengers={len(self.passengers)}, vehicles={len(self.vehicles)}")
         
         for time in tqdm(range(start_time, end_time)):
             ### Update passenger & vehicle

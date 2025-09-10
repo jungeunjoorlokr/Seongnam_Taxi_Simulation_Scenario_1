@@ -1,9 +1,15 @@
+import os 
+import osmnx as ox
+import numpy as np
+import pandas as pd
+import geopandas as gpd
+
 dashboard_config = {
     # path
     'base_path':'./simul_result/scenario_base/',
     'save_figure_path': "./visualization/dashboard/assets/figure/",
     'save_file_path': "./visualization/dashboard/assets/data/",
-    'region_boundary_file_path': None,
+    'region_boundary_file_path': "./data/etc/seongnam_boundary.geojson",
     # time range
     'time_range' : [0, 1440],
     # target region
@@ -12,16 +18,8 @@ dashboard_config = {
     'mapboxKey' : "pk.eyJ1Ijoic3BlYXI1MzA2IiwiYSI6ImNremN5Z2FrOTI0ZGgycm45Mzh3dDV6OWQifQ.kXGWHPRjnVAEHgVgLzXn2g",
 }
 
-# ---- 실행 환경별로 경로 동적으로 지정 ----
-base_path = os.path.dirname(os.path.abspath(__file__))
-boundary_path = os.path.join(base_path, "data", "etc", "seongnam_boundary.geojson")
-dashboard_config['region_boundary_file_path'] = boundary_path
 
-import os 
-import osmnx as ox
-import numpy as np
-import pandas as pd
-import geopandas as gpd
+    
 
 '''level_of_service'''
 # import numpy as np 

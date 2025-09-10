@@ -6,7 +6,8 @@ from modules.utils  .utils import calculate_straight_distance
 from multiprocess import Pool
 import numpy as np 
 from modules.core.simulator_helper import save_json_data
-
+import os
+import pandas as pd
 ### Changing travel time to eta result
 def change_travel_time_to_eta_result(data, time, simul_configs):
     
@@ -52,77 +53,6 @@ def change_travel_time_to_eta_result(data, time, simul_configs):
     
     return eta_result
 
-
-# def address_current_active_vehicle(current_active_vehicle, time, save_path, simul_configs):
-#     from module.simulator_helper import save_json_data
-
-#     # 0. osrm 경로 추출
-#     O = current_active_vehicle[['lat', 'lon', 'P_ride_lat', 'P_ride_lon']].values
-#     D = current_active_vehicle[['P_ride_lat', 'P_ride_lon', 'P_alight_lat', 'P_alight_lon']].values
-    
-#     if len(O) >= 60:
-#         p = Pool(processes=5)
-#         routing_result_O = p.map(osrm_routing_machine, O)
-#         routing_result_D = p.map(osrm_routing_machine, D)
-#         del p
-#     else:
-#         routing_result_O = [osrm_routing_machine(o) for o in O]
-#         routing_result_D = [osrm_routing_machine(d) for d in D]
-
-#     # 1. ETA model이 있으면 적용하여 travel time 조정
-#     if simul_configs['eta_model'] != None: 
-        
-#         eta_result_O = change_travel_time_to_eta_result(O, time, simul_configs)
-#         eta_result_D = change_travel_time_to_eta_result(D, time, simul_configs)
-        
-#         for idx in range(len(current_active_vehicle)):
-#             ## - O
-#             target_timestamp_O = np.array(routing_result_O[idx]['timestamp'])
-#             revision_timestamp_O = ((target_timestamp_O / max(target_timestamp_O)) * eta_result_O[idx]).tolist()
-
-#             routing_result_O[idx]['timestamp'] = revision_timestamp_O
-
-#             ## - D
-#             target_timestamp_D = np.array(routing_result_D[idx]['timestamp'])
-#             revision_timestamp_D = ((target_timestamp_D / max(target_timestamp_D)) * eta_result_D[idx]).tolist()
-
-#             routing_result_D[idx]['timestamp'] = revision_timestamp_D
-
-
-#     # *add_board_time 
-#     for idx in range(len(routing_result_D)):
-#         routing_result_D[idx]['timestamp'] = routing_result_D[idx]['timestamp']  # 일반택시 승차시간 없음   
-    
-#     # 2. P_disembark_time D 마지막 시간으로 변경
-#     current_active_vehicle['P_disembark_time'] = [time+o['timestamp'][-1]+d['timestamp'][-1] for o,d in zip(routing_result_O, routing_result_D)]
-#     # *add_disembark_time 
-#     current_active_vehicle['P_disembark_time'] = current_active_vehicle['P_disembark_time'] + simul_configs.get('add_disembark_time', 0)    
-#     # 3. vehicle marker 저장
-#     vehicle_marker_inf = current_active_vehicle.loc[current_active_vehicle['temporary_stopTime'] != time]
-#     vehicle_marker_inf = vehicle_marker_inf.loc[~(vehicle_marker_inf['temporary_stopTime'].isna())].reset_index(drop=True)
-#     if len(vehicle_marker_inf) >= 1:
-#         vehicle_marker_inf = [{'vehicle_id':row['vehicle_id'], 
-#                                'cartype':row['cartype'],
-#                                'location': [row['lon'], row['lat']], 
-#                                'timestamp':[row['temporary_stopTime'], time]}\
-#                                     for _, row in vehicle_marker_inf.iterrows()]
-
-#         save_json_data(vehicle_marker_inf, save_path=save_path, file_name='vehicle_marker')
-#     del vehicle_marker_inf
-
-#     # 4. passenger marker 저장
-#     passenger_marker_inf = current_active_vehicle[['P_ID', 'P_ride_lat', 'P_ride_lon', 'P_request_time']]
-#     passenger_marker_inf['P_ride_time'] = [o['timestamp'][-1]+time for o in routing_result_O]
-    
-#     if len(passenger_marker_inf) >= 1:
-
-#         passenger_marker_inf = [{'passenger_id':row['P_ID'], 'status':1,
-#                                 'location': [row['P_ride_lon'], row['P_ride_lat']],
-#                                 'timestamp':[row['P_request_time'], row['P_ride_time']]}\
-#                                     for _, row in passenger_marker_inf.iterrows()]
-
-#         save_json_data(passenger_marker_inf, save_path=save_path, file_name='passenger_marker')
-#     del passenger_marker_inf
 
 
 # 1. module/services/disabled_callTaxi/dispatch_flow.py 수정
@@ -211,6 +141,7 @@ def address_current_active_vehicle(current_active_vehicle, time, save_path, simu
     trip_inf.extend(trip_inf_O)
     trip_inf.extend(trip_inf_D)
 
+
     save_json_data(trip_inf, save_path=save_path, file_name='trip')
     del trip_inf
     del trip_inf_O
@@ -266,71 +197,7 @@ def dispatch_methods(requested_passenger, empty_vehicle, simul_configs, time):
 
 ''''''
 import pandas as pd
-# def part_of_dispatch_main(requested_passenger, active_vehicle, empty_vehicle, simul_configs, time):
-    
-#     save_path = simul_configs['save_path']    
-    
-#     check_variable = True
-    
-#     ## 휠체어 승객 우선 배차를 위해 A(휠체어O), B(휠체어X)로 데이터 분리 
-#     # - 휠체어 우선 배차                                            
 
-#     requested_passenger = requested_passenger.reset_index(drop=True)
-#     empty_vehicle = empty_vehicle.reset_index(drop=True)
-
-#     # A_requested_passenger = requested_passenger.loc[(requested_passenger['type'] == 1)].reset_index(drop=True)
-#     # B_requested_passenger = requested_passenger.loc[(requested_passenger['type'] == 0)].reset_index(drop=True)
-
-#     # A_empty_vehicle = empty_vehicle.loc[(empty_vehicle['cartype'] == 1)].reset_index(drop=True)
-#     # B_empty_vehicle = empty_vehicle.loc[(empty_vehicle['cartype'] == 0)].reset_index(drop=True)
-
-#     if (len(A_requested_passenger) > 0) & (len(A_empty_vehicle) > 0):
-
-#         A_requested_passenger, A_empty_vehicle, A_current_active_vehicle = dispatch_methods(A_requested_passenger, A_empty_vehicle, simul_configs, time)
-
-#         empty_vehicle = pd.concat([A_empty_vehicle, B_empty_vehicle]).reset_index(drop=True)
-
-#         if (len(B_requested_passenger) > 0) & (len(empty_vehicle) > 0):
-
-#             B_requested_passenger, empty_vehicle, B_current_active_vehicle = dispatch_methods(B_requested_passenger, empty_vehicle, simul_configs, time)
-
-#             requested_passenger = pd.concat([A_requested_passenger, B_requested_passenger]).reset_index(drop=True)
-
-#             current_active_vehicle =  pd.concat([A_current_active_vehicle, B_current_active_vehicle]).reset_index(drop=True)
-#         else:
-#             requested_passenger = pd.concat([A_requested_passenger, B_requested_passenger]).reset_index(drop=True)
-
-#             current_active_vehicle = A_current_active_vehicle
-            
-#     elif (len(B_requested_passenger) > 0) & (len(empty_vehicle) > 0):
-#         B_requested_passenger, empty_vehicle, current_active_vehicle = dispatch_methods(B_requested_passenger, empty_vehicle, simul_configs, time)
-
-#         requested_passenger = pd.concat([A_requested_passenger, B_requested_passenger]).reset_index(drop=True)
-#     else:
-#         check_variable = False
-
-#     ## 현재 시간에 활성화된 데이터 trip, point 저장 후 => current_active_vehicle 데이터로 반환
-#     if check_variable:
-#         if len(current_active_vehicle) >= 1:
-#             current_active_vehicle = address_current_active_vehicle(current_active_vehicle, time, save_path, simul_configs)
-#             active_vehicle = pd.concat([active_vehicle, current_active_vehicle])\
-
-#     active_vehicle = active_vehicle.reset_index(drop=True)    
-    
-#     return requested_passenger, active_vehicle, empty_vehicle
-
-# def dispatch_main(requested_passenger, active_vehicle, empty_vehicle, simul_configs, time):
-
-#     if len(set(requested_passenger['dispatch_time'])) == 1:
-#         requested_passenger, active_vehicle, empty_vehicle = part_of_dispatch_main(requested_passenger, active_vehicle, empty_vehicle, simul_configs, time)
-#     else:
-#         row_lst = []
-#         for _, row in requested_passenger.groupby('dispatch_time'):
-#             row, active_vehicle, empty_vehicle = part_of_dispatch_main(row, active_vehicle, empty_vehicle, simul_configs, time)
-#             row_lst.append(row)
-#         requested_passenger = pd.concat(row_lst).reset_index(drop=True)
-        
-#     return requested_passenger, active_vehicle, empty_vehicle
 def dispatch_main(requested_passenger, active_vehicle, empty_vehicle, simul_configs, time):
     save_path = simul_configs['save_path']
     check_variable = False
@@ -339,16 +206,18 @@ def dispatch_main(requested_passenger, active_vehicle, empty_vehicle, simul_conf
     requested_passenger = requested_passenger.reset_index(drop=True)
     empty_vehicle = empty_vehicle.reset_index(drop=True)
 
+
     # ✅ 일반 택시는 모든 승객과 차량을 한 번에 배차
     if (len(requested_passenger) > 0) & (len(empty_vehicle) > 0):
         requested_passenger, empty_vehicle, current_active_vehicle = dispatch_methods(
             requested_passenger, empty_vehicle, simul_configs, time)
+
         check_variable = True
 
         # trip, timestamp, json 저장
         if len(current_active_vehicle) >= 1:
             current_active_vehicle = address_current_active_vehicle(current_active_vehicle, time, save_path, simul_configs)
             active_vehicle = pd.concat([active_vehicle, current_active_vehicle])
-
+        
     active_vehicle = active_vehicle.reset_index(drop=True)
     return requested_passenger, active_vehicle, empty_vehicle

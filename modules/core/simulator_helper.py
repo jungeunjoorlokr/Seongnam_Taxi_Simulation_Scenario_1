@@ -47,7 +47,7 @@ def generate_path_to_save(result_folder_name = None, additional_path=None):
 ### Save json data 
 import json
 def save_json_data(current_data, save_path, file_name):
-    
+    import json, os, traceback
     if os.path.isfile(f'{save_path}/{file_name}.json'): 
         with open(f'{save_path}/{file_name}.json', 'r') as f:
             prior_data = json.load(f)
@@ -167,76 +167,6 @@ import os
 import pandas as pd
 import numpy as np
 
-# def generate_simulation_result_json(passengers, trip, records, time_range=[360, 1440]):
-#     trip['start_time'] = [ts[0] for ts in trip['timestamp']]
-#     trip['end_time'] = [ts[-1] for ts in trip['timestamp']]
-
-#     passengers['start_time'] = [ts[0] for ts in passengers['timestamp']]
-#     passengers['end_time'] = [ts[-1] for ts in passengers['timestamp']]
-
-#     driving_vehicle_num_lst = []
-#     dispatched_vehicle_num_lst = []
-#     occupied_vehicle_num_lst = []
-#     empty_vehicle_num_lst = []
-#     fail_passenger_cumNum_lst = []
-#     waiting_passenger_num_lst = []
-#     average_waiting_time_lst = []
-#     current_waiting_time_dict_lst = []
-#     for tm in range(time_range[0], time_range[1]):
-#         current_record = records.loc[(records['time'] == tm )].reset_index(drop=True)
-#         total_vehicle_num = current_record['empty_vehicle_cnt'].iloc[0] + current_record['driving_vehicle_cnt'].iloc[0]
-#         empty_vehicle_num = current_record['empty_vehicle_cnt'].iloc[0] 
-
-#         operating_vehicle = trip.loc[((trip['start_time'] <= tm) & (trip['end_time'] >= tm))].reset_index(drop=True).drop_duplicates('vehicle_id')
-#         dispatched_vehicle = operating_vehicle.loc[(operating_vehicle['board'] == 0)].reset_index(drop=True)
-#         occupied_vehicle = operating_vehicle.loc[(operating_vehicle['board'] == 1)].reset_index(drop=True)
-
-#         ### vehicle num        
-#         driving_vehicle_num = len(operating_vehicle)
-#         dispatched_vehicle_num = len(dispatched_vehicle)
-#         occupied_vehicle_num = len(occupied_vehicle)
-        
-#         driving_vehicle_num_lst.append(driving_vehicle_num)
-#         dispatched_vehicle_num_lst.append(dispatched_vehicle_num)
-#         occupied_vehicle_num_lst.append(occupied_vehicle_num)
-#         empty_vehicle_num_lst.append(empty_vehicle_num)
-        
-#         ### passenger num
-#         fail_passenger_cumNum = current_record['fail_passenger_cnt'].iloc[0]    
-     
-#         # "waiting_passenger_num", "average_waiting_time", "current_waiting_time_dict"
-#         waiting_passengers = passengers.loc[(passengers['start_time'] <= tm) & (passengers['end_time'] >= tm)].reset_index(drop=True)
-#         waiting_passenger_num = len(waiting_passengers)
-        
-#         waiting_passengers['wait_time'] = tm - waiting_passengers['start_time']
-#         average_waiting_time = np.mean(waiting_passengers['wait_time'])
-        
-#         waiting_passengers['wait_time_cate'] = pd.cut(waiting_passengers['wait_time'],
-#                                                 bins=[0, 10, 20, 30, 40, 50, np.inf],
-#                                                 labels=[0,10,20,30,40,50],
-#                                                 right=False)
-#         waiting_time_dictionary= round(waiting_passengers['wait_time_cate'].value_counts(normalize=True) * 100, 2).to_dict()
-#         current_waiting_time_dict = {}
-#         for k, v in zip(waiting_time_dictionary.keys(), waiting_time_dictionary.values()):
-#             current_waiting_time_dict[str(k)] = v
-            
-#         fail_passenger_cumNum_lst.append(fail_passenger_cumNum)
-#         waiting_passenger_num_lst.append(waiting_passenger_num)
-#         average_waiting_time_lst.append(average_waiting_time)
-#         current_waiting_time_dict_lst.append(current_waiting_time_dict)
-        
-#     results = pd.DataFrame({'time': range(time_range[0], time_range[1]),
-#                 'driving_vehicle_num': driving_vehicle_num_lst,
-#                 'dispatched_vehicle_num': dispatched_vehicle_num_lst,
-#                 'occupied_vehicle_num': occupied_vehicle_num_lst,
-#                 'empty_vehicle_num': empty_vehicle_num_lst,
-#                 'fail_passenger_cumNum': fail_passenger_cumNum_lst,
-#                 'waiting_passenger_num': waiting_passenger_num_lst,
-#                 'average_waiting_time': average_waiting_time_lst,
-#                 'current_waiting_time_dict': current_waiting_time_dict_lst})
-    
-#     results['average_waiting_time'] = round(results['average_waiting_time'], 1) 
-#     return results
 
 def generate_simulation_result_json(passengers, trip, records, time_range=[0, 1440]):
     trip['start_time'] = [ts[0] for ts in trip['timestamp']]
