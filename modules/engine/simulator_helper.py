@@ -2,14 +2,14 @@
 # - extract_selector
 
 def extract_selector(service_type):
-    from modules.services.default.extract_data import extract_main
+    from modules.preprocess.extract_data import extract_main
     # service_type = service_type.upper()
     # if service_type == 'DISABLEDCALLTAXI':
     return extract_main
         
 # - dispatch_selector
 def dispatch_selector(service_type):
-    from modules.services.default.dispatch_flow import dispatch_main
+    from modules.dispatch.dispatch_flow import dispatch_main
     # service_type = service_type.upper()
     # if service_type == 'DISABLEDCALLTAXI':    
     return dispatch_main

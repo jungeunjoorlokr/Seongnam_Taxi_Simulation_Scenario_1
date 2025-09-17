@@ -22,9 +22,9 @@ warnings.filterwarnings('ignore')
 
 # 모듈 import
 try:
-    from modules.core.simulator import Simulator
-    from modules.core.simulator_helper import get_preprocessed_seongnam_data, base_configs, generate_simulation_result_json
-    from modules.analysis.dashboard import generate_dashboard_materials, dashboard_config
+    from modules.engine.simulator import Simulator
+    from modules.engine.simulator_helper import get_preprocessed_seongnam_data, base_configs, generate_simulation_result_json
+    from modules.analytics.dashboard import generate_dashboard_materials, dashboard_config
 except ImportError as e:
     print(f"모듈 import 실패: {e}")
     print("현재 디렉토리가 올바른지 확인하세요.")

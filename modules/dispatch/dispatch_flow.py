@@ -5,7 +5,7 @@ from modules.routing.osrm_routing import osrm_routing_machine
 from modules.utils  .utils import calculate_straight_distance
 from multiprocess import Pool
 import numpy as np 
-from modules.core.simulator_helper import save_json_data
+from modules.engine.simulator_helper import save_json_data
 import os
 import pandas as pd
 ### Changing travel time to eta result

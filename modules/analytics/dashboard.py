@@ -23,7 +23,7 @@ dashboard_config = {
 
 '''level_of_service'''
 # import numpy as np 
-from .figures.level_of_service import figure_1, figure_2, figure_3
+from .level_of_service import figure_1, figure_2, figure_3
 def figures_Of_level_of_service(base_path, save_path, time_range, simulation_name=None):
     # Time variables
     time_bins = [tm for tm in range(time_range[0], time_range[1], 60)]
@@ -38,7 +38,7 @@ def figures_Of_level_of_service(base_path, save_path, time_range, simulation_nam
 
 '''vehicle_operation_status'''
 # import numpy as np 
-from .figures.vehicle_operation_status import figure_4, figure_5
+from .vehicle_operation_status import figure_4, figure_5
 def figures_Of_vehicle_operation_status(base_path, save_path, time_range, simulation_name=None):
     # Time variables
     time_bins = [tm for tm in range(time_range[0], time_range[1], 60)]
@@ -53,7 +53,7 @@ def figures_Of_vehicle_operation_status(base_path, save_path, time_range, simula
 # import osmnx as ox
 # import numpy as np
 # import geopandas as gpd
-from .figures.spatial_distribution import figure_6_7_N_8_9, figure_10, figure_11
+from .spatial_distribution import figure_6_7_N_8_9, figure_10, figure_11
 def figures_Of_spatial_distribution(base_path, save_path, region_boundary_file_path, time_range, target_region_name, mapboxKey, simulation_name=None):
     # Geometry
     place_geometry = ox.geocode_to_gdf([target_region_name])

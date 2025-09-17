@@ -1,672 +1,452 @@
-########################################################
-#Server
-########################################################
-# 시작 명령어: python3.13 web_interface/server.py
-#library
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-import uvicorn
-import re
-import json
-import subprocess
+# server.py — PART 1/4: imports, app, globals
+from __future__ import annotations
+
 import os
-import time
-import webcolors
-import openai
-from langchain_community.llms import OpenAI
-from langchain.chains import LLMChain
-from langchain.prompts import PromptTemplate
-from dotenv import load_dotenv
-import pandas as pd
-from datetime import datetime
-from fastapi.staticfiles import StaticFiles
+import sys
 import threading
+from pathlib import Path
+from typing import Dict, Any, Literal, Optional
 
+import pandas as pd
+from fastapi import FastAPI, Body
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
+from pydantic import BaseModel
 
+# --- ensure project root on sys.path ---
+_THIS_FILE = Path(__file__).resolve()
+# 부모 디렉토리 여러 단계 추가(어디에 두었든 안전하게)
+for p in [_THIS_FILE.parent, *_THIS_FILE.parents]:
+    s = str(p)
+    if s not in sys.path:
+        sys.path.append(s)
 
+# Local imports
+from web_interface.graph.state.schema import State
+from web_interface.graph.nodes.flow import run_natural_language_command
+from web_interface.graph.orchestrator import run_once, run_via_graph
+from web_interface.graph.nodes.intent import (
+    parse_command_simple,
+    parse_command_legacy,
+    parse_command_hybrid,
+    IntentResult,
+)
+from web_interface.graph.tools.visualization import build_chart_series
 
-########################################################
-#Load environment variables
-########################################################
+app = FastAPI(title="Seongnam Simulation Server")
 
-# .env 파일 로드
-load_dotenv()
-
-########################################################
-#OpenAI API 키를 환경변수에서 가져오기
-########################################################
-
-openai.api_key = os.getenv('OPENAI_API_KEY')
-
-########################################################
-#Kill process on port
-########################################################
-# 서버 시작 전에 8090 포트 확인 및 정리
-def kill_process_on_port(port):
-    try:
-        # lsof 명령어로 포트 사용 중인 프로세스 확인
-        process = subprocess.Popen(
-            f"lsof -t -i:{port}",
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        pid, err = process.communicate()
-        
-        if pid:
-            # 프로세스 종료
-            subprocess.run(f"kill -9 {pid}", shell=True)
-            print(f"포트 {port}의 프로세스 종료됨")
-            time.sleep(1)  # 프로세스가 완전히 종료되기를 기다림
-            return True
-    except Exception as e:
-        print(f"프로세스 종료 중 오류: {str(e)}")
-    return False
-
-kill_process_on_port(8090)
-
-########################################################
-#FastAPI
-########################################################
-
-app = FastAPI()
-simulation_running = False
-
-# 시뮬레이션 상태 초기화
-simulation_status = {
-    "running": False,
-    "progress": 0,
-    "message": "대기 중",
-    "estimated_time": 0
-}
-
-app.mount("/image", StaticFiles(directory="web_interface/public/image"), name="image")
-app.mount("/dashboard", StaticFiles(directory="visualization/dashboard"), name="dashboard")
-
-# CORS 설정
+# 필요 시 CORS 허용 (index.html 파일/다른 포트에서 열 경우)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ---- Globals ----
+GLOBAL_STATE: Optional[State] = None
+LOCK = threading.Lock()
+BG_THREAD: Optional[threading.Thread] = None
+
+PROGRESS: Dict[str, Any] = {
+    "running": False,
+    "progress": 0,
+    "message": "",
+    "estimated_time": None,
+    "tick": 0,
+    "total_ticks": 0,
+}
+
+# server.py — PART 2/4: CSV 경로 & 초기화
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))  # 이미 있으면 그대로 사용
+INDEX_HTML = os.path.join(PROJECT_ROOT, "index.html")
+FAVICON_ICO = os.path.join(PROJECT_ROOT, "favicon.ico")  # 있으면 서빙, 없으면 204
+# 기본 데이터 경로 (환경변수로 오버라이드 가능)
+# 프로젝트 구조 기준: .../data/agents/{passenger,vehicle}/...
+PROJECT_ROOT = _THIS_FILE.parents[1]    # .../Seongnam_Scenario_1
+
+DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
+
+DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
+PASSENGER_CSV = os.getenv(
+    "PASSENGER_CSV",
+    str(DEFAULT_DATA_DIR / "agents" / "passenger" / "passenger_data.csv"),
+)
+VEHICLE_CSV = os.getenv(
+    "VEHICLE_CSV",
+    str(DEFAULT_DATA_DIR / "agents" / "vehicle" / "vehicle_data.csv"),
+)
+
+def init_state() -> State:
+    s = State()
+    s.simul_configs.update({
+        "dispatch_mode": "ortools",
+        "use_eta": False,
+        "matrix_mode": "DIST",
+        "end_time": 60,
+        "monitor_match_threshold": 95.0,
+        "ortools_time_limit_sec": 5,
+        "max_problem_size": 40000,
+    })
+
+    # 존재 확인 + 친절한 오류
+    if not os.path.exists(PASSENGER_CSV):
+        raise FileNotFoundError(f"PASSENGER_CSV not found: {PASSENGER_CSV}")
+    if not os.path.exists(VEHICLE_CSV):
+        raise FileNotFoundError(f"VEHICLE_CSV not found: {VEHICLE_CSV}")
+
+    p_df = pd.read_csv(PASSENGER_CSV).head(50)
+    v_df = pd.read_csv(VEHICLE_CSV).head(50)
+
+    s.time = int(p_df["ride_time"].min()) if ("ride_time" in p_df.columns and len(p_df)) else 0
+    s.active_passenger = p_df.to_dict("records")
+    s.empty_vehicle    = v_df.to_dict("records")
+    s.paths.update({"save": "./tmp_results"})
+    return s
+
+@app.on_event("startup")
+def _on_startup():
+    global GLOBAL_STATE
+    os.makedirs("./tmp_results", exist_ok=True)
+    print("[startup] PROJECT_ROOT =", PROJECT_ROOT)
+    print("[startup] PASSENGER_CSV =", PASSENGER_CSV)
+    print("[startup] VEHICLE_CSV  =", VEHICLE_CSV)
+    GLOBAL_STATE = init_state()
+
+
+# server.py — PART 3/4: tick, background loop, saving
+import time
+import json
+
+def _summarize_status(state: State) -> str:
+    """콘솔/대시보드용 짧은 상태 요약 문자열."""
+    rec = (state.records or [{}])[-1] if getattr(state, "records", None) else {}
+    ana = getattr(state, "analysis", {}) or {}
+    assigned = rec.get("assigned", 0)
+    unassigned = rec.get("unassigned", 0)
+    last_rate = ana.get("last_match_rate")
+    cum_rate  = ana.get("cum_match_rate")
+    return f"assigned={assigned}, unassigned={unassigned}, last={last_rate}%, cum={cum_rate}%"
+
+def _save_outputs(state: State):
+    """파일 저장(요약/시계열/차트). 실패해도 서버는 계속 동작."""
+    try:
+        os.makedirs("./tmp_results", exist_ok=True)
+        # records
+        if getattr(state, "records", None):
+            pd.DataFrame(state.records).to_csv("./tmp_results/records.csv", index=False)
+        # analysis history (없으면 마지막 한 개라도)
+        hist = getattr(state, "analysis_history", []) or []
+        if not hist and getattr(state, "analysis", None):
+            hist = [state.analysis]
+        if hist:
+            pd.DataFrame(hist).to_csv("./tmp_results/analysis.csv", index=False)
+            with open("./tmp_results/analysis.json", "w") as f:
+                json.dump(hist, f, ensure_ascii=False, indent=2)
+        # chart series
+        try:
+            series = build_chart_series(state.records, hist)
+            with open("./tmp_results/chart_series.json", "w") as f:
+                json.dump(series, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            # chart는 선택 항목이니 실패해도 무시
+            print("[chart_series] skip:", e)
+    except Exception as e:
+        print("[save_outputs] error:", e)
+
+def tick_once(total_ticks: int):
+    """
+    틱 1회 실행:
+      - run_dispatch -> analyze -> history append -> time += 5
+      - PROGRESS 갱신
+    """
+    global GLOBAL_STATE, PROGRESS
+    with LOCK:
+        # 핵심 계산
+        GLOBAL_STATE = run_once("run_dispatch", GLOBAL_STATE)
+        GLOBAL_STATE = run_once("analyze", GLOBAL_STATE)
+        # history
+        h = getattr(GLOBAL_STATE, "analysis_history", []) or []
+        h.append(getattr(GLOBAL_STATE, "analysis", {}) or {})
+        GLOBAL_STATE.analysis_history = h
+        # 시간 전진(필요시 조정)
+        GLOBAL_STATE.time = int(GLOBAL_STATE.time or 0) + 5
+
+        # 진행률/메시지 업데이트
+        PROGRESS["tick"] += 1
+        PROGRESS["progress"] = int(100 * PROGRESS["tick"] / max(1, total_ticks))
+        PROGRESS["message"] = _summarize_status(GLOBAL_STATE)
+
+def _bg_loop(total_ticks: int, sleep_sec: float = 0.0):
+    """
+    백그라운드 루프: total_ticks 회 tick_once 실행.
+    예외 발생 시 진행중 플래그 초기화하고 메시지 기록.
+    """
+    global PROGRESS, BG_THREAD
+    started_at = time.time()
+    try:
+        for _ in range(total_ticks):
+            # 추정 남은 시간 단순 계산(선택)
+            elapsed = max(0.001, time.time() - started_at)
+            per_tick = elapsed / max(1, PROGRESS["tick"])
+            remain   = (total_ticks - PROGRESS["tick"]) * per_tick if PROGRESS["tick"] > 0 else None
+            PROGRESS["estimated_time"] = int(remain) if remain is not None else None
+
+            tick_once(total_ticks)
+
+            if sleep_sec > 0:
+                time.sleep(sleep_sec)
+    except Exception as e:
+        with LOCK:
+            PROGRESS["running"] = False
+            PROGRESS["message"] = f"error: {e}"
+        print("[bg_loop] error:", e)
+    finally:
+        with LOCK:
+            PROGRESS["progress"] = 100
+            PROGRESS["running"] = False
+            PROGRESS["estimated_time"] = 0
+        # 마지막 산출물 저장
+        _save_outputs(GLOBAL_STATE)
+        BG_THREAD = None
+
+
+# server.py — PART 4/4: models & endpoints
+from fastapi import BackgroundTasks, HTTPException
+from typing import List
+
+# ---------- Pydantic Models ----------
+class CommandIn(BaseModel):
+    text: str
+
+class ProcessCommandOut(BaseModel):
+    intent_type: str
+    message: str
+
+class StartSimIn(BaseModel):
+    total_ticks: int = 12      # 기본 12틱 (원하면 프론트에서 조절)
+    sleep_sec: float = 0.0     # 틱 사이 딜레이(시연용)
+
+class StatusOut(BaseModel):
+    running: bool
+    progress: int
+    message: str
+    estimated_time: Optional[int] = None
+    tick: int
+    total_ticks: int
+
+class AnalysisOut(BaseModel):
+    last: dict
+    history_len: int
+
+# ---------- Intent routing helper ----------
+def _detect_intent(text: str) -> str:
+    t = (text or "").strip().lower()
+    # 아주 단순한 규칙 기반 (필요시 확장)
+    if any(k in t for k in ["시작", "실행", "run", "start", "simulate", "simulation"]):
+        return "START_SIMULATION"
+    if any(k in t for k in ["상태", "진행", "진도", "progress", "status", "매칭률"]):
+        return "STATUS_CHECK"
+    if any(k in t for k in ["분석", "리포트", "report", "analysis"]):
+        return "ANALYZE"
+    return "GENERAL"
+
+def _status_message() -> str:
+    global GLOBAL_STATE
+    if GLOBAL_STATE is None:
+        return "state not initialized"
+    return _summarize_status(GLOBAL_STATE)
+
+# ---------- Endpoints ----------
+@app.post("/process-command", response_model=ProcessCommandOut)
+def process_command(cmd: CommandIn):
+    """
+    프론트 채팅 입력 → 간단 intent 분류 후 메시지 반환
+    - START_SIMULATION 이면 프론트가 /start-simulation 호출/폴링 시작
+    - STATUS_CHECK 이면 현재 진행 요약 반환
+    - ANALYZE 이면 즉석 분석 1회 후 요약 반환
+    """
+    global GLOBAL_STATE
+    intent = _detect_intent(cmd.text)
+
+    if intent == "START_SIMULATION":
+        return ProcessCommandOut(intent_type="START_SIMULATION",
+                                 message="시뮬레이션을 시작합니다. 진행률을 표시할게요.")
+
+    if intent == "STATUS_CHECK":
+        return ProcessCommandOut(intent_type="STATUS_CHECK",
+                                 message=_status_message())
+
+    if intent == "ANALYZE":
+        with LOCK:
+            GLOBAL_STATE = run_once("analyze", GLOBAL_STATE)
+            # history에 누적
+            h = getattr(GLOBAL_STATE, "analysis_history", []) or []
+            h.append(getattr(GLOBAL_STATE, "analysis", {}) or {})
+            GLOBAL_STATE.analysis_history = h
+        return ProcessCommandOut(intent_type="ANALYZE",
+                                 message="분석 완료: " + _status_message())
+
+    # GENERAL/기타
+    return ProcessCommandOut(
+        intent_type="GENERAL",
+        message="명령 예) '시뮬 시작', '상태 보여줘', '분석 갱신' 등"
+    )
+
+@app.post("/start-simulation")
+def start_simulation(body: StartSimIn, background_tasks: BackgroundTasks):
+    """
+    백그라운드로 total_ticks 만큼 틱을 실행.
+    실행 중이면 바로 안내하고 종료.
+    """
+    global PROGRESS, BG_THREAD
+    with LOCK:
+        if PROGRESS["running"]:
+            return {"status": "already_running",
+                    "message": _status_message(),
+                    "tick": PROGRESS["tick"],
+                    "total_ticks": PROGRESS["total_ticks"]}
+
+        PROGRESS["running"] = True
+        PROGRESS["progress"] = 0
+        PROGRESS["message"] = "starting..."
+        PROGRESS["tick"] = 0
+        PROGRESS["total_ticks"] = int(body.total_ticks or 12)
+        PROGRESS["estimated_time"] = None
+
+    # FastAPI BackgroundTasks 로도 가능하지만, 상태 공유가 편한 스레드 사용
+    def _runner():
+        _bg_loop(PROGRESS["total_ticks"], sleep_sec=float(body.sleep_sec or 0.0))
+
+    # 이미 BG_THREAD 전역이 있다면 무시하고 새로 교체
+    th = threading.Thread(target=_runner, daemon=True)
+    th.start()
+    BG_THREAD = th
+
+    return {"status": "started",
+            "total_ticks": PROGRESS["total_ticks"],
+            "sleep_sec": body.sleep_sec}
+
+@app.get("/simulation-status", response_model=StatusOut)
+def simulation_status():
+    """프론트가 폴링하는 진행률/메시지 엔드포인트."""
+    return StatusOut(
+        running=bool(PROGRESS["running"]),
+        progress=int(PROGRESS["progress"]),
+        message=str(PROGRESS["message"]),
+        estimated_time=PROGRESS.get("estimated_time"),
+        tick=int(PROGRESS["tick"]),
+        total_ticks=int(PROGRESS["total_ticks"]),
+    )
+
+@app.get("/analysis-latest", response_model=AnalysisOut)
+def analysis_latest():
+    """
+    최신 분석 스냅샷 반환 (대시보드 숫자 갱신용).
+    """
+    global GLOBAL_STATE
+    if GLOBAL_STATE is None:
+        raise HTTPException(status_code=500, detail="state not initialized")
+    last = getattr(GLOBAL_STATE, "analysis", {}) or {}
+    h = getattr(GLOBAL_STATE, "analysis_history", []) or []
+    return AnalysisOut(last=last, history_len=len(h))
+
+# --- ADD: top imports ---
+from pathlib import Path
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+
+# --- ADD: CORS (유연하게 전부 허용) ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 엄격히 하려면 후에 http://127.0.0.1:8000 만 허용
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 정적 파일 서빙 설정
-app.mount("/static", StaticFiles(directory="web_interface"), name="static")
-# 시뮬레이션 경로 설정
-SIMULATION_PATH = "../scenario_seongnam_general_dispatch/visualization/simulation"
-TRIP_JS_PATH = os.path.join(SIMULATION_PATH, "src/components/Trip.js")
-# 시뮬레이션 결과 파일 경로 설정
-RESULT_JSON_PATH = os.path.join(SIMULATION_PATH, "public/data/result.json")
-# Trip.js 파일 경로 확인을 위한 전체 경로 출력
-trip_js_path = os.path.join(SIMULATION_PATH, "src/components/Trip.js")
-print(f"Trip.js 파일 경로: {trip_js_path}")
+# --- ADD: serve index.html at "/" (이미 있다면 건너뛰기) ---
+THIS_DIR = Path(__file__).resolve().parent
+INDEX_FILE = THIS_DIR / "index.html"
+STATIC_DIR = THIS_DIR / "static"
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-########################################################
-#Load prompt
-########################################################
+@app.get("/", response_class=FileResponse)
+def serve_index():
+    return FileResponse(str(INDEX_FILE))
 
-# 외부 프롬프트 텍스트 불러오기 함수
-def load_prompt(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read()
-    
-# 시각화 속성 정의 불러오기
-def load_visualization_schema(path):
-    with open(path, 'r', encoding='utf-8') as f:
-        return f.read()
+@app.get("/", response_class=HTMLResponse)
+def _serve_index():
+    return FileResponse(INDEX_HTML, media_type="text/html")
 
-VISUALIZATION_SCHEMA = load_visualization_schema(
-    "./web_interface/visualization_schema.txt"
-)
+@app.get("/favicon.ico")
+def _favicon():
+    if os.path.exists(FAVICON_ICO):
+        return FileResponse(FAVICON_ICO, media_type="image/x-icon")
+    return HTMLResponse(status_code=204)
 
-########################################################
-#Load color map
-########################################################
-
-# 기본 색상 매핑
-COLOR_MAP = {
-    "빨간": [255, 0, 0],
-    "빨강": [255, 0, 0],
-    "빨": [255, 0, 0],
-    "파란": [0, 0, 255],
-    "파랑": [0, 0, 255],
-    "파": [0, 0, 255],
-    "초록": [0, 255, 0],
-    "초": [0, 255, 0],
-    "노란": [255, 255, 0],
-    "노랑": [255, 255, 0],
-    "보라": [128, 0, 128],
-    "분홍": [255, 192, 203],
-    "핑크": [255, 192, 203],
-    "핑": [255, 192, 203],
-    "주황": [255, 165, 0],
-    "검정": [0, 0, 0],
-    "검": [0, 0, 0],
-    "하늘": [135, 206, 235],
-}
-
-########################################################
-#Load trail map
-########################################################
-
-# 궤적 길이 매핑
-TRAIL_MAP = {
-    "짧게": 0.2,
-    "보통길이": 0.5,
-    "길게": 0.8,
-    "매우길게": 1.0
-}
-
-########################################################
-#LLM
-########################################################
-
-# LLM 설정
-llm = OpenAI(temperature=0.3)
-
-# 요청 유형 분류를 위한 프롬프트
-intent_prompt = PromptTemplate(
-    input_variables=["command"],
-    template=load_prompt("web_interface/prompt/intent_prompt.txt")
-)
-
-########################################################
-#Load prompt
-########################################################
-
-# 상태 확인 프롬프트update_visualization_settings
-status_prompt = PromptTemplate(
-    input_variables=["file_content", "command"],
-    template=load_prompt("web_interface/prompt/status_prompt.txt")
-)
-
-# 🔁 PromptTemplate 내부 중괄호 오류 방지를 위한 안전한 생성 함수
-def safe_prompt_template(raw_template: str, variables: list):
-    safe = raw_template.replace("{", "{{").replace("}", "}}")
-    for var in variables:
-        safe = safe.replace(f"{{{{{var}}}}}", f"{{{var}}}")
-    return safe
-
-#상태 변경 프롬프트
-change_prompt = PromptTemplate(
-    input_variables=["command", "visualization_schema"],
-    template=safe_prompt_template(
-        load_prompt("web_interface/prompt/change_prompt.txt"),
-        ["command", "visualization_schema"]
-    )
-)
-
-# 일반 대화 프롬프트
-general_prompt = PromptTemplate(
-    input_variables=["command"],
-    template=load_prompt("web_interface/prompt/general_prompt.txt")
-)
-
-# 시뮬레이션 조정 프롬프트
-simulation_adjust_prompt = PromptTemplate(
-    input_variables=["command"],
-    template=safe_prompt_template(
-        load_prompt("web_interface/prompt/simulation_adjust_prompt.txt"),
-        ["command"]
-    )
-)
-
-# 시뮬레이션 실행 프롬프트
-simulation_run_prompt = PromptTemplate(
-    input_variables=["command"],
-    template=load_prompt("web_interface/prompt/simulation_run_prompt.txt")
-)
+class CommandIn(BaseModel):
+    text: str
 
 
-########################################################
-#Load chain
-########################################################
 
-# 체인 생성
-intent_chain = LLMChain(llm=llm, prompt=intent_prompt)
-status_chain = LLMChain(llm=llm, prompt=status_prompt)
-change_chain = LLMChain(llm=llm, prompt=change_prompt)
-general_chain = LLMChain(llm=llm, prompt=general_prompt)
-simulation_adjust_chain = LLMChain(llm=llm, prompt=simulation_adjust_prompt)
-simulation_run_chain = LLMChain(llm=llm, prompt=simulation_run_prompt)
-
-########################################################
-#Update visualization settings
-########################################################
-
-def update_visualization_settings(analysis_result):
-    try:
-        with open(TRIP_JS_PATH, 'r') as file:
-            content = file.read()
-
-        target_layer = analysis_result['target_layer']
-        property_name = analysis_result['property']
-        value = analysis_result['value']
-
-        #기존 -> layer_pattern = rf'id:\s*["\']{target_layer}["\'],[\s\S]*?new [\w]+Layer\('
-
-        # layer_pattern = rf'new [\w]+Layer\(\{{[\s\S]*?id:\s*["\']{target_layer}["\']'
-        layer_pattern = rf'new [\w]+Layer\(\{{[^{{}}]*?id:\s*["\']{target_layer}["\'][^{{}}]*?\}}\)'
-        # layer_pattern = rf'new [\w]+Layer\(\{{[\s\S]*?id:\s*["\']{target_layer}["\'][\s\S]*?\}}\)'
-        # 🔍 여기서 디버깅 출력 추가
-        print("===== 정규식 레이어 찾기 =====")
-        print(f"target_layer: {target_layer}")
-        print(f"정규식: {layer_pattern}")
-
-        # 정확히 getColor: [...]만 대체하도록
-        # 먼저 해당 레이어 블록만 추출
-        
-        layer_match = re.search(layer_pattern, content)
-        if not layer_match:
-            raise Exception("대상 레이어를 Trip.js에서 찾을 수 없습니다.")
-
-        layer_block = layer_match.group()
-
-        if property_name == "getColor" and isinstance(value, list):
-            color_func_pattern = r'getColor\s*:\s*d\s*=>\s*d\.board\s*===\s*1\s*\?\s*(\[[^\]]+\])\s*:\s*(\[[^\]]+\])'
-            match = re.search(color_func_pattern, layer_block)
-            if not match:
-                raise Exception("getColor 함수 형태를 찾을 수 없습니다.")
-
-            boarding_color = match.group(1)
-            empty_color = match.group(2)
-
-            target = analysis_result.get("target")  # "boarding" 또는 "empty"
-
-            if target == "boarding":
-                new_func = f"getColor: d => d.board === 1 ? [{', '.join(map(str, value))}] : {empty_color}"
-            elif target == "empty":
-                new_func = f"getColor: d => d.board === 1 ? {boarding_color} : [{', '.join(map(str, value))}]"
-            else:
-                raise Exception("analysis_result에 'target' 필드가 없거나 값이 잘못되었습니다 (boarding/empty 중 하나여야 함)")
-
-            updated_block = re.sub(color_func_pattern, new_func, layer_block)
-
-        # 전체 content에 대체
-        new_content = content.replace(layer_block, updated_block)
-
-        with open(TRIP_JS_PATH, 'w') as file:
-            file.write(new_content)
-
-        return True
-
-    except Exception as e:
-        raise Exception(f"시각화 설정 업데이트 실패: {str(e)}")
-
-########################################################
-#Load index
-########################################################
-
-@app.get("/")
-async def read_index():
-    return FileResponse("web_interface/index.html")
-########################################################
-#Process command
-########################################################
+class CommandIn(BaseModel):
+    text: str
+    # 어떤 파서를 쓸지 선택 (기본값: hybrid)
+    parser: Literal["simple", "legacy", "hybrid"] = "hybrid"
 
 @app.post("/process-command")
-async def process_command(request: Request):
-    data = await request.json()
-    command = data.get("command", "")
-    
-    try:
-        # 시뮬레이션 시작 명령 처리
-        if "시뮬레이션 시작" in command:
-            return await start_simulation()
-        
-        # 명령어 의도 분석
-        intent_result = json.loads(intent_chain.run(command=command))
-        intent_type = intent_result['type']
-        print(f"intent_type: {intent_type}")
-        
-        if "평균 대기" in command or "대기 시간" in command:
-            # (1) 현재 시간
-            now = datetime.now()
-            hour = now.hour
-            minute = now.minute
-            
-            # (2) result.json 파일 읽기
-            try:
-                df_result = pd.read_json(RESULT_JSON_PATH)
-                latest_record = df_result.iloc[-1]  # 가장 마지막 값 사용
-                average_waiting_time = latest_record['average_waiting_time']
-            except Exception as e:
-                average_waiting_time = 0  # 읽기 실패 시 0 처리
-            
-            # (3) 자연어 응답 구성
-            result_message = f"현재 {hour}시 {minute}분 기준 평균 대기 시간은 약 {average_waiting_time:.1f}분입니다."
+def process_command(req: CommandIn = Body(...)) -> Dict[str, Any]:
+    global GLOBAL_STATE
+    if GLOBAL_STATE is None:
+        GLOBAL_STATE = init_state()
 
-            return {
-                "status": "success",
-                "message": result_message
-            }
-            
-        elif intent_type == "STATE_CHANGE":
-            # 상태 변경 명령 처리
-            change_result = change_chain.run(command=command)
-            print(f"Change chain 응답: {change_result}")  # 디버깅 로그
+    text = (req.text or "").strip()
 
-            # JSON 객체만 추출 (중괄호 두 겹 또는 한 겹 모두 지원)
-            match = re.search(r'\{[^{]*"target_layer"\s*:\s*"[^"]+".*?\}', change_result, re.DOTALL)
-            if not match:
-                raise Exception("JSON 형식의 응답을 찾지 못했습니다")
+    # 1) 파서 선택
+    if req.parser == "simple":
+        res = parse_command_simple(text)
+    elif req.parser == "legacy":
+        res = parse_command_legacy(text)
+    else:  # "hybrid"
+        res = parse_command_hybrid(text)
 
-            try:
-                json_str = match.group(0)  # 전체 JSON 문자열 통째로
-                analysis = json.loads(json_str)
+    intent_type = res.intent
+    slots: Dict[str, Any] = res.slots or {}
 
-                # 필수 키 확인
-                required_keys = ['target_layer', 'property', 'value', 'explanation']
-                if not all(key in analysis for key in required_keys):
-                    raise Exception("응답에 필수 키가 누락되었습니다")
+    # 2) 즉시 반영 가능한 설정 업데이트
+    cfg = GLOBAL_STATE.simul_configs
+    if "dispatch_mode" in slots: cfg["dispatch_mode"] = slots["dispatch_mode"]
+    if "matrix_mode"   in slots: cfg["matrix_mode"]   = slots["matrix_mode"]
+    if "use_eta"       in slots: cfg["use_eta"]       = bool(slots["use_eta"])
+    if "end_time"      in slots: cfg["end_time"]      = int(slots["end_time"])
 
-                # 시각화 설정 업데이트
-                update_visualization_settings(analysis)
+    # CSV 교체(옵션)
+    import pandas as pd
+    if "passenger_csv" in slots:
+        try:
+            p_df = pd.read_csv(slots["passenger_csv"])
+            GLOBAL_STATE.active_passenger = p_df.to_dict("records")
+        except Exception as e:
+            return {"intent_type": "ERROR", "message": f"승객 CSV 로드 실패: {e}"}
 
-                message = "=== 명령어 분석 결과 ===\n\n"
-                message += f"1. 변경 대상: {analysis['target_layer']}\n\n"
-                message += f"2. 변경 속성: {analysis['property']}\n\n"
-                message += f"3. 변경 값: {analysis['value']}\n\n"
-                message += f"4. 변경 이유: {analysis['explanation']}"
+    if "vehicle_csv" in slots:
+        try:
+            v_df = pd.read_csv(slots["vehicle_csv"])
+            GLOBAL_STATE.empty_vehicle = v_df.to_dict("records")
+        except Exception as e:
+            return {"intent_type": "ERROR", "message": f"차량 CSV 로드 실패: {e}"}
 
-                return {
-                    "status": "success",
-                    "intent_type": intent_type,
-                    "message": message
-                }
-            
+    # 3) 인텐트 실행 (LangGraph 스타일 실행기)
+    # orchestrator.act_on_intent 을 쓰는 버전:
+    from web_interface.graph.orchestrator import act_on_intent
+    GLOBAL_STATE, payload = act_on_intent(intent_type, slots, GLOBAL_STATE)
 
-            except json.JSONDecodeError as e:
-                print(f"JSON 파싱 오류. 원본 응답: {change_result}")
-                raise Exception(f"명령어 분석 결과를 처리할 수 없습니다: {str(e)}")
-            except Exception as e:
-                raise Exception(f"명령어 처리 중 오류 발생: {str(e)}")
-            
-        elif intent_type == "STATUS_CHECK":
-            try:
-                # 파일이 최신 상태로 디스크에 기록될 수 있도록 약간의 지연
-                time.sleep(0.3)
-
-                # 🔁 Trip.js 파일을 강제로 다시 읽음
-                with open(TRIP_JS_PATH, 'r', encoding='utf-8') as f:
-                    file_content = f.read()
-                    print(f"file_content: {file_content}")
-
-                # 🔍 상태 체크 체인 실행
-                result = status_chain.run(file_content=file_content, command=command)
-
-                return {
-                    "status": "success",
-                    "intent_type": intent_type,
-                    "message": result
-                }
-            
-            except Exception as e:
-                return {
-                    "status": "error",
-                    "message": f"STATUS_CHECK 처리 실패: {str(e)}"
-                }
-        elif intent_type == "SET_VALUE":
-            adjust_result = simulation_adjust_chain.run(command=command)
-            print("🔥 command 전달:", command)
-            print("📦 adjust_result (원형):", repr(adjust_result))
-
-            try:
-                # JSON만 추출
-                match = re.search(r'\{.*\}', adjust_result, re.DOTALL)
-                if not match:
-                    raise Exception("JSON 객체를 추출할 수 없습니다.")
-                adjust_json = json.loads(match.group(0))
-
-                if adjust_json.get("target_variable") == "num_taxis":
-                    taxi_num = adjust_json.get("value")
-                    success, msg = modify_taxi_number_in_main_file(taxi_num)
-                    if success:
-                        return {
-                            "status": "success",
-                            "intent_type": intent_type,
-                            "message": msg
-                        }
-                    else:
-                        raise Exception(msg)
-                else:
-                    raise Exception("target_variable이 'num_taxis'가 아님")
-            except Exception as e:
-                return {
-                    "status": "error",
-                    "intent_type": intent_type,
-                    "message": f"SET_VALUE 처리 중 오류 발생: {str(e)}"
-        }
-
-        elif intent_type == "START_SIMULATION":
-            global simulation_running, simulation_status  # ✅ 전역 변수 사용
-
-            if simulation_running:
-                return {
-                    "status": "error",
-                    "intent_type": intent_type,
-                    "message": "⚠️ 시뮬레이션이 이미 실행 중입니다. 잠시 후 다시 시도해주세요."
-                }
-
-            try:
-                simulation_running = True  # ✅ 실행 시작 표시
-
-                simulation_status = {
-                    "running": True,
-                    "progress": 0,
-                    "message": "🚦 시뮬레이션 시작 중...",
-                    "estimated_time": 300  # 5분 예상
-                }
-
-                simulation_run_result = simulation_run_chain.run(command=command)
-                print("🧠 simulation_run_result:", repr(simulation_run_result))
-
-                proc = subprocess.Popen(
-                    ["python3.13", "../scenario_seongnam_general_dispatch/main.py"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
-                )
-    
-                def capture_output():  # 🟢 여기!!!
-                    with open('simulation_output.txt', 'w', encoding='utf-8') as f:
-                        for line in proc.stdout:
-                            # 터미널에도 출력 (디버깅용)
-                            print(f"📤 {line}", end='')  # 🟢 이미 있네요!
-                            
-                            # 파일에 바로 쓰기
-                            f.write(line)
-                            f.flush()
-                
-                thread = threading.Thread(target=capture_output)
-                thread.daemon = True
-                thread.start()
-                return {
-                    "status": "success",
-                    "intent_type": intent_type,
-                    "message": "🚦 시뮬레이션이 시작되었습니다. 진행 상황을 확인 중..."
-                }
-                
-                # ❌ 아래 코드는 실행 안 됨 (return 후라서)
-                # 이 부분은 나중에 다른 방법으로 처리해야 함
-                
-            except Exception as e:
-                simulation_running = False
-                return {
-                    "status": "error",
-                    "intent_type": intent_type,
-                    "message": f"main.py 실행 실패: {str(e)}"
-                }
-                
-        else:  # GENERAL
-            # 일반 대화 처리
-            result = general_chain.run(command=command)
-            return {
-                "status": "success",
-                "intent_type": intent_type, 
-                "message": result
-            }
-            
-    except Exception as e:
-        return {
-            "status": "error",
-            "message": f"오류: {str(e)}"
-        }
-
-########################################################
-#Get trip colors
-########################################################
-
-@app.get("/get-trip-colors")
-async def get_trip_colors():
-    try:
-        with open(TRIP_JS_PATH, 'r', encoding='utf-8') as f:
-            content = f.read()
-
-        # getColor 함수에서 색상 추출
-        match = re.search(r'getColor\s*:\s*d\s*=>\s*d\.board\s*===\s*1\s*\?\s*\[([^\]]+)\]\s*:\s*\[([^\]]+)\]', content)
-        if not match:
-            raise Exception("getColor 함수에서 색상 정보를 찾을 수 없습니다.")
-
-        boarding = [int(x.strip()) for x in match.group(1).split(',')]
-        empty = [int(x.strip()) for x in match.group(2).split(',')]
-
-        return {
-            "status": "success",
-            "boardingRGB": boarding,
-            "emptyRGB": empty
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "message": f"Trip.js 색상 추출 실패: {str(e)}"
-        }
-
-########################################################
-#Get simulation status
-########################################################
-
-@app.get("/simulation-status")
-async def get_simulation_status():
-    """시뮬레이션 진행 상태 조회"""
-    global simulation_status
-    
-    # simulation_status.json 파일에서 상태 읽기
-    try:
-        status_file = "simulation_status.json"
-        print(f"📁 상태 파일 경로: {status_file}")
-
-        if os.path.exists(status_file):
-            with open(status_file, 'r', encoding='utf-8') as f:
-                file_status = json.load(f)
-                simulation_status.update(file_status)
-                print(f"✅ 상태 읽기 성공: {file_status}")
-        else:
-            print("❌ 파일이 없습니다!")
-    except Exception as e:
-        print(f"상태 파일 읽기 실패: {e}")
-    
-    return simulation_status
-
-
-########################################################
-#Set taxi number
-########################################################
-
-# 내부 호출용: 택시 수 설정 로직만 따로 함수로 분리
-def modify_taxi_number_in_main_file(new_num):
-    try:
-        main_path = "../scenario_seongnam_general_dispatch/main.py"
-        with open(main_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-
-        new_lines = []
-        for line in lines:
-            if line.strip().startswith("num_taxis ="):
-                new_lines.append(f"num_taxis = {new_num}  # ← 자연어 명령으로 변경됨\n")
-            else:
-                new_lines.append(line)
-
-        with open(main_path, 'w', encoding='utf-8') as f:
-            f.writelines(new_lines)
-
-        return True, f"main.py 파일 내 택시 수가 {new_num}대로 설정되었습니다."
-    except Exception as e:
-        return False, str(e)
-    
-@app.post("/set-taxi-number")
-async def set_taxi_number(request: Request):
-    data = await request.json()
-    new_num = data.get("num_taxis", 1623)
-
-    try:
-        # main.py 파일 열기
-        main_path = "../scenario_seongnam_general_dispatch/main.py"
-        with open(main_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-
-        # num_taxis 줄 찾아서 수정
-        new_lines = []
-        for line in lines:
-            if line.strip().startswith("num_taxis ="):
-                new_lines.append(f"num_taxis = {new_num}  # ← 자연어 명령으로 변경됨\n")
-            else:
-                new_lines.append(line)
-
-        # 다시 파일에 저장
-        with open(main_path, 'w', encoding='utf-8') as f:
-            f.writelines(new_lines)
-
-        return {
-            "status": "success",
-            "message": f"main.py 파일 내 택시 수가 {new_num}대로 설정되었습니다."
-        }
-
-    except Exception as e:
-        return {
-            "status": "error",
-            "message": f"num_taxis 수정 실패: {str(e)}"
-        }
-    
-
-########################################################
-#Start simulation
-########################################################
-
-@app.post("/start-simulation")
-async def start_simulation():
-    try:
-        # React 포트(3000) 정리
-        subprocess.run("lsof -t -i:3000 | xargs kill -9", shell=True)
-        time.sleep(1)
-        
-        # 시뮬레이션 시작
-        process = subprocess.Popen(
-            "npm start",
-            shell=True,
-            cwd=SIMULATION_PATH
-        )
-        
-        return {
-            "status": "success",
-            "message": "시뮬레이션이 시작되었습니다. 새 창이 열릴 때까지 기다려주세요."
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "message": f"시뮬레이션 시작 실패: {str(e)}"
-        }
-
-########################################################
-#Run server
-########################################################
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8090)
+    # 사용자가 이해하기 쉬운 안내 메시지 보강
+    payload.setdefault("intent_type", intent_type)
+    payload.setdefault("message", res.reason or f"{intent_type} 처리됨")
+    payload["slots"] = slots
+    payload["parser"] = req.parser
+    return payload
