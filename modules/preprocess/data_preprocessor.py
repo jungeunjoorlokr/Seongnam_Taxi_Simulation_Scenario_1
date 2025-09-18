@@ -5,8 +5,12 @@ sys.path.append("..")
 import pandas as pd 
 import numpy as np 
 import copy 
-from datetime import datetime
 import warnings
+
+from datetime import datetime
+from modules.utils.distance_utils import filter_outside_region
+
+
 warnings.filterwarnings('ignore')
 
 #########################
@@ -192,8 +196,46 @@ def convert_time_standard(operation_record):
 #         taxi_schedule['work_end'] = taxi_schedule['work_end'] * 60
     
 #         return taxi_schedule
+### 시뮬레이션 시작 전 데이터 전처리
+def passenger_preprocessing(passengers, configs):
+    passengers = passengers[['ID','ride_time','ride_lat','ride_lon','alight_lat','alight_lon','dispatch_time','type']]
+    return passengers
 
+def vehicle_preprocessing(vehicles, configs):
+    vehicles = vehicles[['vehicle_id','cartype','work_start','work_end','temporary_stopTime','lat','lon']]
+    vehicles['work_start'] = vehicles['work_start'] * 60
+    vehicles['work_end'] = vehicles['work_end'] * 60
 
+    # 비율 적용
+    if configs.get("corp_priv_split"):
+        # TODO: corp/priv split 적용 로직
+        pass
+
+    # 경계 필터링
+    if configs.get("filter_out_of_region", False):
+        vehicles = filter_outside_region(vehicles, configs['relocation_region'])
+    
+    return vehicles
+
+def get_preprocessed_data(passengers, vehicles, configs):
+    passengers = passenger_preprocessing(passengers, configs)
+    vehicles = vehicle_preprocessing(vehicles, configs)
+    return passengers, vehicles
+
+### Preprocessing passengers, vehicles data
+def crop_data_by_timerange(passengers, vehicles, inform):
+    start_time, end_time = inform['time_range']
+    
+    # - passenger
+    passengers = passengers.loc[(passengers['ride_time'] >= start_time) & (passengers['ride_time'] < end_time)]
+    passengers = passengers.reset_index(drop=True)
+    # - vehicle
+    vehicles = vehicles.loc[(vehicles['work_end'] > start_time)]
+    vehicles.loc[(vehicles['work_start']) < start_time, 'work_start'] = start_time
+    vehicles.loc[(vehicles['work_end'] > inform['time_range'][-1]), 'work_end'] = inform['time_range'][-1]
+    vehicles = vehicles.reset_index(drop=True)
+    
+    return passengers, vehicles
 #####################
 # Main data extract #
 #####################

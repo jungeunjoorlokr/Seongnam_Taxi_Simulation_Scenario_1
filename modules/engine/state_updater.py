@@ -1,4 +1,4 @@
-from .simulator_helper import save_json_data
+from .io_manager import save_json_data
 import pandas as pd
 import numpy as np 
 
@@ -131,3 +131,5 @@ def update_vehicle(active_vehicle, empty_vehicle, vehicle, simul_configs, time):
             del end_vehicle
     
     return active_vehicle, empty_vehicle, vehicle
+
+

@@ -1,7 +1,27 @@
-from .simulator_helper import *
-from .simulator_object_update import *
+from .config_manager import *
+from .state_updater import *
 import pandas as pd 
 from tqdm import tqdm
+
+from .config_manager import extract_selector, dispatch_selector, base_configs
+from .state_updater import update_passenger, update_vehicle
+from .io_manager import generate_path_to_save, save_json_data, checking_progress
+from ..preprocess.data_preprocessor import crop_data_by_timerange, get_preprocessed_data
+
+### Generate simulation base-data
+# import pandas as pd 
+def base_data():
+    active_vehicle, empty_vehicle, requested_passenger, fail_passenger =\
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    
+    simulation_record = pd.DataFrame(columns=['time',
+                                              'waiting_passenger_cnt',
+                                              'fail_passenger_cnt', 
+                                              'empty_vehicle_cnt',
+                                              'driving_vehicle_cnt', 
+                                              'iter_time(second)'])
+    
+    return active_vehicle, empty_vehicle, requested_passenger, fail_passenger, simulation_record
 
 class Simulator:
     

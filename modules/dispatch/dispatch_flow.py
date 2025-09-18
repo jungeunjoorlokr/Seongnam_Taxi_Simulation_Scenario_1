@@ -1,11 +1,11 @@
 import sys
 sys.path.append("..")
 #### dispatch helper 
-from modules.routing.osrm_routing import osrm_routing_machine
-from modules.utils  .utils import calculate_straight_distance
+from modules.routing.osrm_client import osrm_routing_machine
+from modules.utils.distance_utils import calculate_straight_distance
 from multiprocess import Pool
 import numpy as np 
-from modules.engine.simulator_helper import save_json_data
+from modules.engine.io_manager import save_json_data
 import os
 import pandas as pd
 ### Changing travel time to eta result
@@ -150,10 +150,10 @@ def address_current_active_vehicle(current_active_vehicle, time, save_path, simu
     return current_active_vehicle
 
 ## dispatch 방법 및 cost matrix 계산 방법 결정
-from modules.dispatch.dispatch_cost import dispatch_cost_matrix
-from modules.dispatch.dispatch import in_order_dispatch, ortools_dispatch
+from modules.dispatch.cost_matrix import dispatch_cost_matrix
+from modules.dispatch.dispatch_algorithms import in_order_dispatch, ortools_dispatch
 
-def dispatch_methods(requested_passenger, empty_vehicle, simul_configs, time):
+def select_dispatch_method(requested_passenger, empty_vehicle, simul_configs, time):
     if simul_configs['dispatch_mode'] == 'optimization':
         cost_matrix = dispatch_cost_matrix(requested_passenger, 
                                            empty_vehicle, 
@@ -209,7 +209,7 @@ def dispatch_main(requested_passenger, active_vehicle, empty_vehicle, simul_conf
 
     # ✅ 일반 택시는 모든 승객과 차량을 한 번에 배차
     if (len(requested_passenger) > 0) & (len(empty_vehicle) > 0):
-        requested_passenger, empty_vehicle, current_active_vehicle = dispatch_methods(
+        requested_passenger, empty_vehicle, current_active_vehicle = select_dispatch_method(
             requested_passenger, empty_vehicle, simul_configs, time)
 
         check_variable = True

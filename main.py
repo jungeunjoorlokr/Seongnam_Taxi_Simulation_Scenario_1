@@ -16,15 +16,19 @@ from datetime import datetime
 import json
 from glob import glob
 
-
 # 경고 메시지 숨기기
 warnings.filterwarnings('ignore')
 
 # 모듈 import
 try:
     from modules.engine.simulator import Simulator
-    from modules.engine.simulator_helper import get_preprocessed_seongnam_data, base_configs, generate_simulation_result_json
-    from modules.analytics.dashboard import generate_dashboard_materials, dashboard_config
+    from modules.engine.config_manager import base_configs
+    from modules.preprocess.data_preprocessor import get_preprocessed_data
+    from modules.analytics.dashboard import (
+        generate_dashboard_materials,
+        dashboard_config,
+        generate_simulation_result_json,   # ← 이 줄 추가
+    )
 except ImportError as e:
     print(f"모듈 import 실패: {e}")
     print("현재 디렉토리가 올바른지 확인하세요.")
@@ -55,7 +59,7 @@ def load_and_filter_data(num_taxis=None):
     vehicles   = pd.read_csv(vehicle_path)
     
     # 전처리
-    passengers, vehicles = get_preprocessed_seongnam_data(passengers, vehicles)
+    passengers, vehicles = get_preprocessed_data(passengers, vehicles, base_configs)
     
     print(f"원본 데이터: 승객 {len(passengers)}명, 차량 {len(vehicles)}대")
     print(passengers[passengers['ride_time'].between(1380,1560)])
@@ -73,7 +77,7 @@ def load_and_filter_data(num_taxis=None):
 # 시뮬레이션 설정
 ########################################################################################
 def setup_simulation_config():
-    """시뮬레이션 설정 구성"""
+    """시뮬레이션 설정 구성 변경"""
     simul_configs = base_configs.copy()
     
     # 기본 설정
@@ -81,7 +85,7 @@ def setup_simulation_config():
     simul_configs['relocation_region'] = 'seongnam'
     simul_configs['additional_path'] = 'scenario_base'
     simul_configs['dispatch_mode'] = 'in_order'
-    simul_configs['time_range'] = [1380, 1560]
+    simul_configs['time_range'] = [1380, 1560] #대시보드랑 베이스랑 시간은 같음 설정에서 변경
     simul_configs['matrix_mode'] = 'haversine_distance' 
     simul_configs['add_board_time'] = 0.2
     simul_configs['add_disembark_time'] = 0.2
@@ -163,12 +167,14 @@ def generate_dashboard(simul_configs):
         
         # 개별 대시보드 설정
         config_individual = dashboard_config.copy()
-        config_individual['time_range'] = [1380, 1560]
+        config_individual['time_range'] = simul_configs['time_range']
+        #config_individual['time_range'] = [1380, 1560]
         config_individual['base_path'] = './simul_result/scenario_base/'
         config_individual['save_figure_path'] = f"./visualization/dashboard/assets/figure/{simulation_name}_figures/"
         config_individual['save_file_path'] = f"./visualization/dashboard/assets/data/{simulation_name}_data/"
         
-        print(f"Figure 저장 위치: {config_individual['save_figure_path']}")
+    
+        print(f"Figure 위치: {config_individual['save_figure_path']}")
         print(f"Data 저장 위치: {config_individual['save_file_path']}")
         
         # 폴더 생성

@@ -1,5 +1,5 @@
 # library
-from modules.utils.utils import calculate_straight_distance
+from modules.utils.distance_utils import calculate_straight_distance
 import numpy as np
 import itertools
 import requests
@@ -9,6 +9,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import warnings 
 warnings.filterwarnings('ignore')
+
 
 #############
 # OSRM base #

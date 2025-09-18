@@ -4,27 +4,30 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 
+from modules.engine.config_manager import base_configs
+
 dashboard_config = {
-    # path
-    'base_path':'./simul_result/scenario_base/',
-    'save_figure_path': "./visualization/dashboard/assets/figure/",
-    'save_file_path': "./visualization/dashboard/assets/data/",
-    'region_boundary_file_path': "./data/etc/seongnam_boundary.geojson",
-    # time range
-    'time_range' : [0, 1440],
-    # target region
-    'target_region_name' : '성남시',
-    # mapboxkey
-    'mapboxKey' : "pk.eyJ1Ijoic3BlYXI1MzA2IiwiYSI6ImNremN5Z2FrOTI0ZGgycm45Mzh3dDV6OWQifQ.kXGWHPRjnVAEHgVgLzXn2g",
-}
+                    # path
+                    'base_path':'./simul_result/scenario_base/',
+                    'save_figure_path': "./visualization/dashboard/assets/figure/",
+                    'save_file_path': "./visualization/dashboard/assets/data/",
+                    'region_boundary_file_path': "./data/etc/seongnam_boundary.geojson",
+                    # time range
+                    'time_range' : base_configs['time_range'], 
+                    # target region
+                    'target_region_name' : '성남시',
+                    # mapboxkey
+                    'mapboxKey' : "pk.eyJ1Ijoic3BlYXI1MzA2IiwiYSI6ImNremN5Z2FrOTI0ZGgycm45Mzh3dDV6OWQifQ.kXGWHPRjnVAEHgVgLzXn2g",
+                    }
+
 
 
     
 
 '''level_of_service'''
 # import numpy as np 
-from .level_of_service import figure_1, figure_2, figure_3
-def figures_Of_level_of_service(base_path, save_path, time_range, simulation_name=None):
+from .service_charts import figure_1, figure_2, figure_3
+def generate_level_of_service_figures(base_path, save_path, time_range, simulation_name=None):
     # Time variables
     time_bins = [tm for tm in range(time_range[0], time_range[1], 60)]
     time_bins.append(np.inf)
@@ -38,8 +41,8 @@ def figures_Of_level_of_service(base_path, save_path, time_range, simulation_nam
 
 '''vehicle_operation_status'''
 # import numpy as np 
-from .vehicle_operation_status import figure_4, figure_5
-def figures_Of_vehicle_operation_status(base_path, save_path, time_range, simulation_name=None):
+from .fleet_charts import figure_4, figure_5
+def generate_vehicle_operation_figures(base_path, save_path, time_range, simulation_name=None):
     # Time variables
     time_bins = [tm for tm in range(time_range[0], time_range[1], 60)]
     time_bins.append(np.inf)
@@ -53,8 +56,8 @@ def figures_Of_vehicle_operation_status(base_path, save_path, time_range, simula
 # import osmnx as ox
 # import numpy as np
 # import geopandas as gpd
-from .spatial_distribution import figure_6_7_N_8_9, figure_10, figure_11
-def figures_Of_spatial_distribution(base_path, save_path, region_boundary_file_path, time_range, target_region_name, mapboxKey, simulation_name=None):
+from .spatial_charts import figure_6_7_N_8_9, figure_10, figure_11
+def generate_spatial_distribution_figures(base_path, save_path, region_boundary_file_path, time_range, target_region_name, mapboxKey, simulation_name=None):
     # Geometry
     place_geometry = ox.geocode_to_gdf([target_region_name])
     region_boundary = gpd.read_file(region_boundary_file_path)
@@ -120,15 +123,100 @@ def simulation_configuration_for_dashboard(base_path, save_path, simulation_name
         simul_result_inf.to_csv(f'{save_path}stats.csv', sep=',',index=False)
     else: 
         return simul_result_inf
-    
+def generate_simulation_result_json(passengers, trip, records, time_range=[0, 1440]):
+    trip['start_time'] = [ts[0] for ts in trip['timestamp']]
+    trip['end_time'] = [ts[-1] for ts in trip['timestamp']]
+    passengers['start_time'] = [ts[0] for ts in passengers['timestamp']]
+    passengers['end_time'] = [ts[-1] for ts in passengers['timestamp']]
+
+    driving_vehicle_num_lst = []
+    dispatched_vehicle_num_lst = []
+    occupied_vehicle_num_lst = []
+    empty_vehicle_num_lst = []
+    fail_passenger_cumNum_lst = []
+    waiting_passenger_num_lst = []
+    average_waiting_time_lst = []
+    current_waiting_time_dict_lst = []
+
+    for tm in range(time_range[0], time_range[1]):
+        current_record = records.loc[(records['time'] == tm)].reset_index(drop=True)
+
+        if current_record.empty:
+            driving_vehicle_num = 0
+            dispatched_vehicle_num = 0
+            occupied_vehicle_num = 0
+            empty_vehicle_num = 0
+            fail_passenger_cumNum = 0
+            waiting_passenger_num = 0
+            average_waiting_time = 0
+            current_waiting_time_dict = {}
+        else:
+            empty_vehicle_num = current_record['empty_vehicle_cnt'].iloc[0]
+            driving_vehicle_num = current_record['driving_vehicle_cnt'].iloc[0]
+            fail_passenger_cumNum = current_record['fail_passenger_cnt'].iloc[0]
+
+            operating_vehicle = trip.loc[(trip['start_time'] <= tm) & (trip['end_time'] >= tm)].drop_duplicates('vehicle_id')
+            dispatched_vehicle = operating_vehicle.loc[operating_vehicle['board'] == 0]
+            occupied_vehicle = operating_vehicle.loc[operating_vehicle['board'] == 1]
+
+            dispatched_vehicle_num = len(dispatched_vehicle)
+            occupied_vehicle_num = len(occupied_vehicle)
+
+            waiting_passengers = passengers.loc[(passengers['start_time'] <= tm) & (passengers['end_time'] >= tm)].copy()
+            waiting_passenger_num = len(waiting_passengers)
+
+            if not waiting_passengers.empty:
+                waiting_passengers['wait_time'] = tm - waiting_passengers['start_time']
+                average_waiting_time = np.mean(waiting_passengers['wait_time'])
+
+                waiting_passengers['wait_time_cate'] = pd.cut(
+                    waiting_passengers['wait_time'],
+                    bins=[0, 10, 20, 30, 40, 50, np.inf],
+                    labels=[0, 10, 20, 30, 40, 50],
+                    right=False
+                )
+                waiting_time_dictionary = round(
+                    waiting_passengers['wait_time_cate'].value_counts(normalize=True) * 100, 2
+                ).to_dict()
+                current_waiting_time_dict = {str(k): v for k, v in waiting_time_dictionary.items()}
+            else:
+                average_waiting_time = 0
+                current_waiting_time_dict = {}
+
+        # append values
+        driving_vehicle_num_lst.append(driving_vehicle_num)
+        dispatched_vehicle_num_lst.append(dispatched_vehicle_num)
+        occupied_vehicle_num_lst.append(occupied_vehicle_num)
+        empty_vehicle_num_lst.append(empty_vehicle_num)
+        fail_passenger_cumNum_lst.append(fail_passenger_cumNum)
+        waiting_passenger_num_lst.append(waiting_passenger_num)
+        average_waiting_time_lst.append(round(average_waiting_time, 1))
+        current_waiting_time_dict_lst.append(current_waiting_time_dict)
+
+    results = pd.DataFrame({
+        'time': range(time_range[0], time_range[1]),
+        'driving_vehicle_num': driving_vehicle_num_lst,
+        'dispatched_vehicle_num': dispatched_vehicle_num_lst,
+        'occupied_vehicle_num': occupied_vehicle_num_lst,
+        'empty_vehicle_num': empty_vehicle_num_lst,
+        'fail_passenger_cumNum': fail_passenger_cumNum_lst,
+        'waiting_passenger_num': waiting_passenger_num_lst,
+        'average_waiting_time': average_waiting_time_lst,
+        'current_waiting_time_dict': current_waiting_time_dict_lst
+    })
+
+    return results
+
+
+
 # MAIN - generate everthing about dashboard
 def generate_dashboard_materials(dashboard_config, simulation_name=None):
     simulation_configuration_for_dashboard(dashboard_config['base_path'], dashboard_config['save_file_path'], simulation_name)
 
-    figures_Of_level_of_service(dashboard_config['base_path'], dashboard_config['save_figure_path'],
+    generate_level_of_service_figures(dashboard_config['base_path'], dashboard_config['save_figure_path'],
                                 dashboard_config['time_range'], simulation_name)
-    figures_Of_vehicle_operation_status(dashboard_config['base_path'], dashboard_config['save_figure_path'],
+    generate_vehicle_operation_figures(dashboard_config['base_path'], dashboard_config['save_figure_path'],
                                         dashboard_config['time_range'], simulation_name)
-    figures_Of_spatial_distribution(dashboard_config['base_path'], dashboard_config['save_figure_path'], dashboard_config['region_boundary_file_path'], 
+    generate_spatial_distribution_figures(dashboard_config['base_path'], dashboard_config['save_figure_path'], dashboard_config['region_boundary_file_path'], 
                                     dashboard_config['time_range'],
                                     dashboard_config['target_region_name'], dashboard_config['mapboxKey'], simulation_name)

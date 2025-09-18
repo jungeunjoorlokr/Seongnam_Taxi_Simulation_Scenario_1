@@ -86,7 +86,7 @@ def ortools_dispatch(active_passenger, empty_vehicle, cost_matrix):
 ############################
 # TAXI - dispatch in-order #
 ############################
-from .dispatch_cost import dispatch_cost_matrix
+from .cost_matrix import dispatch_cost_matrix
 import numpy as np 
 import pandas as pd 
 def in_order_dispatch(active_ps, empty_vh, time, simul_configs):
