@@ -6,9 +6,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="./assets/css/dash.css" rel="stylesheet" type="text/css"/>
     <script src="./assets/js/tab.js"></script>
-    <script src="./assets/js/stats-loader_simulation_14.js"></script>
-    <script src="plotly-2.14.0.min.js"></script>
+    <script src="./assets/js/stats-loader.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.14.0.min.js"></script>
     <title>Results Report</title>
+
+    <script>
+        const statsData = {
+            total_calls: 1575,
+            failed_calls: 0,
+            failure_rate: 0.0,
+            vehicles_driven: 739
+        };
+        
+        window.addEventListener('DOMContentLoaded', function() {
+            if (document.getElementById('total-calls')) {
+                document.getElementById('total-calls').textContent = statsData.total_calls.toLocaleString();
+                document.getElementById('failed-calls').textContent = statsData.failed_calls.toLocaleString();
+                document.getElementById('failure-rate').textContent = statsData.failure_rate + '%';
+                document.getElementById('vehicles-driven').textContent = statsData.vehicles_driven.toLocaleString();
+            }
+        });
+    </script>
+    
 </head>
 <body>
     <div id="banner">
@@ -38,12 +57,12 @@
         <div class="row2">
             <div class="col1 dash-graph">
                 <div class="js-plotly-plot">
-                    <iframe src="./assets/figure/simulation_14_figures/figure_1.html" frameborder="0"></iframe>
+                    <iframe src="./assets/figure/simulation_base_figures/figure/simulation_8_figures/figure_1.html" frameborder="0"></iframe>
                 </div>
             </div>
             <div class="col2 dash-graph">
                 <div class="js-plotly-plot">
-                    <iframe src="./assets/figure/simulation_14_figures/figure_2.html" frameborder="0"></iframe>
+                    <iframe src="./assets/figure/simulation_base_figures/figure/simulation_8_figures/figure_2.html" frameborder="0"></iframe>
                 </div>
             </div>
         </div>
@@ -51,7 +70,7 @@
         <h4><b>2. Distribution of Passenger Waiting Times (승객 대기 시간 분포)</b></h4>
         <div class="dash-graph">
             <div class="js-plotly-plot">
-                <iframe src="./assets/figure/simulation_14_figures/figure_3.html" frameborder="0"></iframe>
+                <iframe src="./assets/figure/simulation_base_figures/figure/simulation_8_figures/figure_3.html" frameborder="0"></iframe>
             </div>  
         </div>
     </div>
@@ -68,15 +87,15 @@
         </div>
         <div id="operating-col" class="dash-graph">
             <div class="js-plotly-plot">
-                <!-- <iframe data-src="./assets/figure/figure_4.html" frameborder="0"></iframe> -->
-                <iframe src="./assets/figure/simulation_14_figures/figure_4.html" frameborder="0"></iframe>
+                <!-- <iframe data-src="./assets/figure/figure/simulation_8_figures/figure_4.html" frameborder="0"></iframe> -->
+                <iframe src="./assets/figure/simulation_base_figures/figure/simulation_8_figures/figure_4.html" frameborder="0"></iframe>
             </div>
         </div>
         <h4><b>2. Number of Vehicles Operated per Hour (시간당 운행 차량 수)</b></h4>
         <div id="operating-col" class="dash-graph">
             <div class="js-plotly-plot">
-                <!-- <iframe data-src="./assets/figure/figure_5.html" frameborder="0"></iframe> -->
-                <iframe src="./assets/figure/simulation_14_figures/figure_5.html" frameborder="0"></iframe>
+                <!-- <iframe data-src="./assets/figure/figure/simulation_8_figures/figure_5.html" frameborder="0"></iframe> -->
+                <iframe src="./assets/figure/simulation_base_figures/figure/simulation_8_figures/figure_5.html" frameborder="0"></iframe>
             </div>
         </div>
     </div>
@@ -89,12 +108,12 @@
             <div id="requests-col1">
                 <div class="dash-geometry-graph">
                     <div class="js-plotly-plot">
-                        <iframe src="./assets/figure/simulation_14_figures/figure_6.html" frameborder="0"></iframe>
+                        <iframe src="./assets/figure/simulation_base_figures/figure/simulation_8_figures/figure_6.html" frameborder="0"></iframe>
                     </div>
                 </div>
                 <div class="dash-geometry-graph">
                     <div class="js-plotly-plot">
-                        <iframe src="./assets/figure/simulation_14_figures/figure_7.html" frameborder="0"></iframe>
+                        <iframe src="./assets/figure/simulation_base_figures/figure/simulation_8_figures/figure_7.html" frameborder="0"></iframe>
                     </div>
                 </div>
             </div>
@@ -103,12 +122,12 @@
             <div id="requests-col2">
                 <div class="dash-geometry-graph">
                     <div class="js-plotly-plot">
-                        <iframe src="./assets/figure/simulation_14_figures/figure_8.html" frameborder="0"></iframe>
+                        <iframe src="./assets/figure/simulation_base_figures/figure/simulation_8_figures/figure_8.html" frameborder="0"></iframe>
                     </div>
                 </div>
                 <div class="dash-geometry-graph">
                     <div class="js-plotly-plot">
-                        <iframe src="./assets/figure/simulation_14_figures/figure_9.html" frameborder="0"></iframe>
+                        <iframe src="./assets/figure/simulation_base_figures/figure/simulation_8_figures/figure_9.html" frameborder="0"></iframe>
                     </div>
                 </div>
             </div>
@@ -130,14 +149,14 @@
                 <div id="num2-row2-col1">
                     <div class="dash-geometry-graph">
                         <div class="js-plotly-plot">
-                            <iframe src="./assets/figure/simulation_14_figures/figure_10.html" frameborder="0"></iframe>
+                            <iframe src="./assets/figure/simulation_base_figures/figure/simulation_8_figures/figure_10.html" frameborder="0"></iframe>
                         </div>
                     </div>
                 </div>
                 <div id="num2-row2-col2">
                     <div class="dash-geometry-graph">
                         <div class="js-plotly-plot">
-                            <iframe src="./assets/figure/simulation_14_figures/figure_11.html" frameborder="0"></iframe>
+                            <iframe src="./assets/figure/simulation_base_figures/figure/simulation_8_figures/figure_11.html" frameborder="0"></iframe>
                         </div>
                     </div>
                 </div>

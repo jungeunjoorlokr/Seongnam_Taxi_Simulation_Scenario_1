@@ -40,12 +40,6 @@ class Simulator:
         path_to_save_data = generate_path_to_save(self.configs['path'], self.configs['additional_path'])
         self.configs['save_path'] = path_to_save_data
 
-        # 🔎 누가 선택됐는지/어디에 저장할지 바로 확인
-        print(f"[WHO] extract_main = {self.extract_main.__module__}.{self.extract_main.__name__}")
-        print(f"[WHO] dispatch_main = {self.dispatch_main.__module__}.{self.dispatch_main.__name__}")
-        print(f"[PATH] save_path = {self.configs['save_path']}")
-        print(f"[CFG] problem = {self.configs.get('problem')}, dispatch_mode = {self.configs.get('dispatch_mode')}")
-
         # object data (raw_data | passengers, vehicles)
         self.raw_data = raw_data
         self.passengers = passengers
@@ -79,32 +73,39 @@ class Simulator:
     ### simulation run function
     def run(self):
         start_time, end_time = self.configs['time_range'][0], self.configs['time_range'][1]
-        print(f"[RUN] time_range = {start_time}~{end_time}, passengers={len(self.passengers)}, vehicles={len(self.vehicles)}")
+        print(f"[Data]  passengers={len(self.passengers)} load completed")
         
-        for time in tqdm(range(start_time, end_time)):
-            ### Update passenger & vehicle
-            # - passenger
-            self.requested_passenger, self.fail_passenger, self.passengers = update_passenger(self.requested_passenger, 
-                                                                                              self.fail_passenger,  
-                                                                                              self.passengers, 
-                                                                                              self.configs,
-                                                                                              time)
-            
-            # - vehicle
-            self.active_vehicle, self.empty_vehicle, self.vehicles = update_vehicle(self.active_vehicle,
-                                                                                   self.empty_vehicle, 
-                                                                                   self.vehicles,
-                                                                                   self.configs,
-                                                                                   time)
-            
-            ### Dispatch (matching passenger and vehicle)     
-            if (len(self.requested_passenger) > 0) & (len(self.empty_vehicle) > 0):
-                self.requested_passenger, self.active_vehicle, self.empty_vehicle = self.dispatch_main(self.requested_passenger, 
-                                                                                                       self.active_vehicle, 
-                                                                                                       self.empty_vehicle, 
-                                                                                                       self.configs, 
-                                                                                                       time)
+        with tqdm(total=end_time-start_time, 
+              desc="시뮬레이션", 
+              unit="분",
+              ncols=80) as pbar:
 
-            ### Simulation progress check function 
-            # - record the current status (number of requested_passenger, fail_passenger, empty_vehicle, active_vehicle)
-            self.simulation_record = checking_progress(self.simulation_record, time, self.requested_passenger, self.fail_passenger, self.empty_vehicle, self.active_vehicle, self.configs)
+            for time in range(start_time, end_time):
+                ### Update passenger & vehicle
+                # - passenger
+                self.requested_passenger, self.fail_passenger, self.passengers = update_passenger(self.requested_passenger, 
+                                                                                                self.fail_passenger,  
+                                                                                                self.passengers, 
+                                                                                                self.configs,
+                                                                                                time)
+                
+                # - vehicle
+                self.active_vehicle, self.empty_vehicle, self.vehicles = update_vehicle(self.active_vehicle,
+                                                                                    self.empty_vehicle, 
+                                                                                    self.vehicles,
+                                                                                    self.configs,
+                                                                                    time)
+                
+                ### Dispatch (matching passenger and vehicle)     
+                if (len(self.requested_passenger) > 0) & (len(self.empty_vehicle) > 0):
+                    self.requested_passenger, self.active_vehicle, self.empty_vehicle = self.dispatch_main(self.requested_passenger, 
+                                                                                                        self.active_vehicle, 
+                                                                                                        self.empty_vehicle, 
+                                                                                                        self.configs, 
+                                                                                                        time)
+
+                ### Simulation progress check function 
+                # - record the current status (number of requested_passenger, fail_passenger, empty_vehicle, active_vehicle)
+                self.simulation_record = checking_progress(self.simulation_record, time, self.requested_passenger, self.fail_passenger, self.empty_vehicle, self.active_vehicle, self.configs)
+
+                pbar.update(1)

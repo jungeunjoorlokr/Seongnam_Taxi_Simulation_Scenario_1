@@ -68,17 +68,16 @@ def figure_4(base_path, time_range, time_single_labels, simulation_name=None, sa
         legend=dict(
             x=0.5,  # ✅ Legend를 왼쪽 위로 이동
             y=0.85,
-            bgcolor="rgba(255,255,255,0.9)",  # ✅ 배경 추가
+            bgcolor="rgba(255,255,255,0.9)",  # 배경 추가
             bordercolor="rgba(0,0,0,0.2)",
             borderwidth=1
         ),
-        margin=dict(l=60, r=120, b=60, t=100, pad=10),  # ✅ 적절한 여백
+        margin=dict(l=60, r=120, b=60, t=100, pad=10),  # 적절한 여백
         template="plotly_white"
     )
     
     if save_path != None:
         fig_4.write_html(f"{save_path}figure_4.html", config={'responsive': True})
-        print(f"✅ Figure 4 수정 완료: {save_path}figure_4.html")
     else: 
         return fig_4
 
@@ -95,7 +94,7 @@ def figure_5(base_path, time_bins, time_single_labels, simulation_name=None, sav
 
     total_operating_vh_cnt = []
     
-    # ✅ time_bins와 labels 길이 맞추기 (마지막 inf 제거)
+    # time_bins와 labels 길이 맞추기 (마지막 inf 제거)
     time_bins_fixed = time_bins[:-1] + [time_bins[-2] + 60]  # 마지막 inf를 실제 값으로 교체
     
     for fd_nm in folders_to_process:
@@ -104,7 +103,7 @@ def figure_5(base_path, time_bins, time_single_labels, simulation_name=None, sav
             records = pd.read_csv(records_path)
             records['operating_vehicle_cnt'] = records['empty_vehicle_cnt'] + records['driving_vehicle_cnt']
             
-            # ✅ 수정된 time_bins 사용
+            # 수정된 time_bins 사용
             records['time_cat'] = pd.cut(records['time'], bins=time_bins_fixed, labels=time_single_labels, right=False)
             records = records[['time_cat', 'operating_vehicle_cnt']]
             
@@ -131,7 +130,7 @@ def figure_5(base_path, time_bins, time_single_labels, simulation_name=None, sav
         yaxis = dict(
             title="number of vehicles"
         ),
-        margin=dict(l=60, r=60, b=60, t=40, pad=10),  # ✅ 적절한 여백
+        margin=dict(l=60, r=60, b=60, t=40, pad=10),  # 적절한 여백
         template="plotly_white"
     )
     
@@ -143,6 +142,5 @@ def figure_5(base_path, time_bins, time_single_labels, simulation_name=None, sav
     
     if save_path != None:
         fig_5.write_html(f"{save_path}figure_5.html", config={'responsive': True})
-        print(f"✅ Figure 5 수정 완료: {save_path}figure_5.html")
     else:
         return fig_5

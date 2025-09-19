@@ -1,8 +1,11 @@
 import os 
+import json 
 import osmnx as ox
 import numpy as np
 import pandas as pd
 import geopandas as gpd
+import shutil
+import os
 
 from modules.engine.config_manager import base_configs
 
@@ -69,7 +72,8 @@ def generate_spatial_distribution_figures(base_path, save_path, region_boundary_
     figure_10(base_path, place_geometry, region_boundary, mapboxKey = mapboxKey, simulation_name=simulation_name, save_path = save_path)
     figure_11(base_path, place_geometry, region_boundary, mapboxKey = mapboxKey, simulation_name=simulation_name, save_path = save_path)
     
-    
+
+
 '''simulation_configurations'''
 def simulation_configuration_for_dashboard(base_path, save_path, simulation_name=None):
     simul_result_inf = {
@@ -120,7 +124,7 @@ def simulation_configuration_for_dashboard(base_path, save_path, simulation_name
     simul_result_inf['failure_rate'] = round(simul_result_inf['failure_rate'], 2)
 
     if save_path != None:
-        simul_result_inf.to_csv(f'{save_path}stats.csv', sep=',',index=False)
+        simul_result_inf.to_json(f'{save_path}stats.json', orient='records')
     else: 
         return simul_result_inf
 def generate_simulation_result_json(passengers, trip, records, time_range=[0, 1440]):
@@ -220,3 +224,113 @@ def generate_dashboard_materials(dashboard_config, simulation_name=None):
     generate_spatial_distribution_figures(dashboard_config['base_path'], dashboard_config['save_figure_path'], dashboard_config['region_boundary_file_path'], 
                                     dashboard_config['time_range'],
                                     dashboard_config['target_region_name'], dashboard_config['mapboxKey'], simulation_name)
+
+
+
+def generate_html_js_files(simulation_name):
+    """HTML과 JS 파일을 시뮬레이션별로 생성 (stats.json 데이터 직접 임베드)"""
+    
+    stats_json_path = f'./visualization/dashboard/assets/data/{simulation_name}_data/stats.json'
+    try:
+        with open(stats_json_path, 'r') as f:
+            stats_data = json.load(f)[0]  
+            
+        total_calls = stats_data['total_calls']
+        failed_calls = stats_data['failed_calls']
+        failure_rate = stats_data['failure_rate']
+        vehicles_driven = stats_data['vehicles_driven']
+                
+    except Exception as e:
+        print(f"stats.json 읽기 실패, 기본값 사용: {e}")
+        total_calls = 0
+        failed_calls = 0
+        failure_rate = 0.0
+        vehicles_driven = 0
+    
+    js_template = f"""// Stats Loader for {simulation_name}
+                // stats.json 데이터를 직접 임베드하여 CORS 문제 회피
+
+                (function() {{
+                    // 데이터 직접 임베드 (CORS 없음)
+                    const statsData = {{
+                        total_calls: {total_calls},
+                        failed_calls: {failed_calls},
+                        failure_rate: {failure_rate},
+                        vehicles_driven: {vehicles_driven}
+                    }};
+                    
+                    // DOM 로드 시 데이터 표시
+                    window.addEventListener('DOMContentLoaded', function() {{
+                        console.log('통계 데이터 적용 중...', statsData);
+                        
+                        // 각 요소에 데이터 적용
+                        const totalCallsEl = document.getElementById('total-calls');
+                        const failedCallsEl = document.getElementById('total-failed-calls');
+                        const failureRateEl = document.getElementById('failure-rate');
+                        const vehiclesDrivenEl = document.getElementById('vehicles-driven');
+                        
+                        if (totalCallsEl) totalCallsEl.textContent = statsData.total_calls.toLocaleString();
+                        if (failedCallsEl) failedCallsEl.textContent = statsData.failed_calls.toLocaleString();
+                        if (failureRateEl) failureRateEl.textContent = statsData.failure_rate.toFixed(2);
+                        if (vehiclesDrivenEl) vehiclesDrivenEl.textContent = statsData.vehicles_driven.toLocaleString();
+                        
+                        console.log('통계 데이터 적용 완료!');
+                }});
+            }})();
+            """
+    
+    template_path = './visualization/dashboard/index_simulation_base.html'
+    with open(template_path, 'r', encoding='utf-8') as f:
+        html_content = f.read()
+    
+    html_content = html_content.replace('simulation_base_figures', f'{simulation_name}_figures')
+
+    html_content = html_content.replace(
+        '<script src="./assets/js/stats-loader.js"></script>',
+        f'<script src="../js/simulation_stats/stats-loader_{simulation_name}.js"></script>'
+    )
+
+    html_content = html_content.replace('./assets/css/', '../css/')
+    html_content = html_content.replace('./assets/js/', '../js/')
+    html_content = html_content.replace('./assets/figure/', '../figure/')
+
+    import os
+    os.makedirs('./visualization/dashboard/assets/js/simulation_stats/', exist_ok=True)
+    
+     
+    js_path = f'./visualization/dashboard/assets/js/simulation_stats/stats-loader_{simulation_name}.js'
+    html_path = f'./visualization/dashboard/assets/html/index_{simulation_name}.html'
+    
+    with open(js_path, 'w', encoding='utf-8') as f:
+        f.write(js_template)
+    
+    with open(html_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    
+    return html_path, js_path
+
+
+
+def sync_to_npm(simul_configs):
+    """시뮬레이션 결과를 visualization/simulation/public/data로 복사 (덮어쓰기)"""
+    
+    source_dir = simul_configs['save_path']
+    target_dir = './visualization/simulation/public/data'
+    
+    files_to_copy = [
+        'passenger_marker.json',
+        'vehicle_marker.json', 
+        'trip.json',
+        'record.csv',
+        'result.json'
+    ]
+    
+    os.makedirs(target_dir, exist_ok=True)
+    
+    for file_name in files_to_copy:
+        source_file = os.path.join(source_dir, file_name)
+        target_file = os.path.join(target_dir, file_name)
+        
+        if os.path.exists(source_file):
+            shutil.copy2(source_file, target_file)
+    
