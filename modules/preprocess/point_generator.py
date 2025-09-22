@@ -1,17 +1,18 @@
+
 import itertools
 import numpy as np
 import pandas as pd
 import geopandas as gpd
 import osmnx as ox
 
-
 # *조회가 안 될때, https://www.openstreetmap.org 기입하고 싶은 지역명을 먼저 확인하고 실행하세요. 
 # road_type : 1(고속도로), 2(간선도로), 3(집산도로)
 class point_generator_with_OSM:
+    
     def __init__(self):
-        self.road_type = [2,3]
+        self.road_type = [2, 3]  # Main roads and minor roads
         
-    # filter road 
+    # Filter road edges by highway type and minimum length
     def filter_edges(self, edges):
         edges['highway'] = [i if type(i) != list else "-".join(i) for i in edges['highway']]
 
@@ -26,13 +27,11 @@ class point_generator_with_OSM:
         edges = edges.reset_index()
         return edges
     
-    # generate point
+    # Generate random points along road edges
     def generate_point(self, target_edges, count):
-        # generate point geometry
         generated_nodes = []
         for _ in range(count):
-
-            # choice edge, cutting ratio and linestring direction randomly.
+            # Randomly select edge, cutting ratio and direction
             random_row = np.random.randint(len(target_edges))
             random_ratio = np.random.choice([0.1, 0.2, 0.3, 0.4, 0.5])
             random_reverse = np.random.choice([True, False])
@@ -41,7 +40,7 @@ class point_generator_with_OSM:
             selected_row = selected_row.to_crs(5174)
 
             linestring = selected_row['geometry'].iloc[0]
-            cut_length = selected_row['geometry'].length.iloc[0]  * random_ratio    
+            cut_length = selected_row['geometry'].length.iloc[0] * random_ratio    
             
             if random_reverse:
                 linestring = linestring.reverse()
@@ -57,32 +56,33 @@ class point_generator_with_OSM:
 
         return generated_nodes
     
+    # Generate points for a specific place name
     def point_generator_about_placeName(self, place, count):
-        # load road
+        # Load road network
         G = ox.graph_from_place(place, network_type="drive_service", simplify=True)
         _, edges = ox.graph_to_gdfs(G)
         edges = edges.reset_index(drop=True)
 
-        # select road
+        # Filter roads by type
         edges = self.filter_edges(edges)
         
-        # generate point
+        # Generate points
         generated_nodes = self.generate_point(edges, count)
         return generated_nodes
 
+    # Generate points for multiple geometries
     def point_generator_about_geometry(self, geoData):
-        # load road
+        # Load roads for all unique place names
         place_lst = list(set(geoData['geoName']))
         edges_lst = []
         for plc in place_lst:
             G = ox.graph_from_place(plc, network_type='drive_service', simplify=True)
             _, edge = ox.graph_to_gdfs(G)
-            # select road
             edge = self.filter_edges(edge)
             edges_lst.append(edge)
         edges = pd.concat(edges_lst).reset_index(drop=True)
 
-        # generate point
+        # Generate points for each geometry
         generated_nodes_lst = []
         for _, row in geoData.iterrows():
             sub_edges = edges.loc[(edges['geometry'].intersects(row['geometry']))].reset_index(drop=True)

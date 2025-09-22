@@ -1,24 +1,22 @@
-from difflib import get_close_matches
+import numpy as np
 import geopandas as gpd
+import osmnx as ox
+from difflib import get_close_matches
 from shapely.ops import unary_union
 
 
-### 비슷한 단어 선택
-
+# Find similar words from candidate list
 def select_similar_word(word_to_compare, candidates):
-
-    n = 1 # 최대 문자 매칭 개수
-    cutoff = 0.6 # 유사도 하한
+    n = 1  # Maximum number of matches
+    cutoff = 0.6  # Similarity threshold
     
     close_matches = get_close_matches(word_to_compare, candidates, n, cutoff)
-
     return close_matches
 
-### haversine
-# - 위도, 경도를 통해 거리를 측정 (반환 km)
-import numpy as np
+
+# Calculate haversine distance between coordinates (returns km)
 def calculate_straight_distance(lat1, lon1, lat2, lon2):
-    km_constant = 3959* 1.609344
+    km_constant = 3959 * 1.609344
     lat1, lon1, lat2, lon2 = map(np.deg2rad, [lat1, lon1, lat2, lon2])
     dlat = lat2 - lat1 
     dlon = lon2 - lon1
@@ -27,8 +25,8 @@ def calculate_straight_distance(lat1, lon1, lat2, lon2):
     km = km_constant * c
     return km
 
-### route로 km 단위의 거리를 반환
-# import numpy as np
+
+# Calculate total distance for routes (returns km)
 def calculate_route_distance(data):
     distance = []
 
@@ -40,20 +38,18 @@ def calculate_route_distance(data):
     return distance 
 
 
-### meter를 위도, 경도 유클리드 거리로 변환
-import osmnx as ox
+# Convert meters to euclidean distance in lat/lon coordinates
 def calculate_euclidean_distance(meter):
-
-    #점 쌍 사이의 유클리드 거리를 계산
-    dis_1 = ox.distance.euclidean_dist_vec(36.367658 , 127.447499, 36.443928, 127.419678)
-    #직선거리 계산
-    dis_2 = ox.distance.great_circle_vec(36.367658 , 127.447499, 36.443928, 127.419678)
+    # Calculate euclidean distance between point pairs
+    dis_1 = ox.distance.euclidean_dist_vec(36.367658, 127.447499, 36.443928, 127.419678)
+    # Calculate great circle distance
+    dis_2 = ox.distance.great_circle_vec(36.367658, 127.447499, 36.443928, 127.419678)
 
     return dis_1/dis_2 * meter
 
-### 경계 필터링
+
+# Filter vehicles outside region boundary
 def filter_outside_region(vehicles, region_key):
-    # 예: 성남시 경계
     boundary_path = f"data/etc/{region_key}_boundary.geojson"
     region = gpd.read_file(boundary_path)
     union_poly = unary_union(region.geometry.values)
