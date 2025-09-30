@@ -94,3 +94,24 @@ data/etc/HangJeongDong_ver20230701.geojson
 data/etc/FZI_POI_20230627.geojson
 web_interface/
 configs/
+# simul_result 안의 내용은 기본 무시(디렉터리 자체는 추적)
+simul_result/*
+
+# simul_result 폴더 자체는 유지
+!simul_result/.gitkeep
+
+# scenario_base 폴더는 보이게
+!simul_result/scenario_base/
+
+# 하지만 scenario_base 내부 파일은 기본 무시
+simul_result/scenario_base/*
+
+# 폴더 유지를 위한 .gitkeep만 허용
+!simul_result/scenario_base/.gitkeep
+
+
+# html 폴더 안의 모든 파일 무시(폴더만 유지)
+visualization/dashboard/assets/html/*
+
+# 폴더 표시용 .gitkeep만 허용
+!visualization/dashboard/assets/html/.gitkeep
