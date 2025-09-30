@@ -57,7 +57,6 @@ secrets.json
 # -----------------------------
 # 시뮬레이션 결과물 (실행 출력)
 # -----------------------------
-simul_result/
 *.json
 *.parquet
 *.xlsx
@@ -91,3 +90,7 @@ visualization/dashboard/assets/figure/
 # 특정 대용량 데이터 무시
 # -----------------------------
 data/etc/HangJeongDong_ver20230701.geojson
+
+data/etc/FZI_POI_20230627.geojson
+web_interface/
+configs/
